@@ -12,9 +12,15 @@ import type {
 } from '@/types';
 import { linkKey } from '@/lib/derive';
 
-// 搜尋/建議/擷取走 Opus（語意理解），分類走 Haiku（大量、輕量、低延遲）。
-const REASONING_MODEL = 'claude-opus-4-8';
-const FAST_MODEL = 'claude-haiku-4-5';
+// 搜尋/建議/擷取走 reasoning 模型（語意理解），分類走 fast 模型（大量、輕量、低延遲）。
+// 不是每把 key 都有所有模型的存取權，依序 fallback 到 key 實際可用的模型。
+const REASONING_CANDIDATES = ['claude-opus-4-8', 'claude-sonnet-5', 'claude-haiku-4-5'];
+const FAST_CANDIDATES = ['claude-haiku-4-5', 'claude-sonnet-5', 'claude-opus-4-8'];
+
+export interface ResolvedModels {
+  reasoning: string;
+  fast: string;
+}
 
 const CARD_TYPES: CardType[] = ['idea', 'research', 'compete', 'meeting', 'design', 'tech', 'okr'];
 
@@ -129,25 +135,51 @@ function friendlyError(e: unknown): Error {
   return e instanceof Error ? e : new Error(String(e));
 }
 
-/**
- * 啟用前驗證 key：對 app 實際使用的兩個模型各打一次免費的 count_tokens
- * 端點——key 無效會拿到 401，缺少某個模型的存取權會拿到 403/404。
- * 不消耗任何 token。
- */
-export async function verifyAnthropicKey(apiKey: string): Promise<void> {
-  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
-  try {
-    await Promise.all(
-      [REASONING_MODEL, FAST_MODEL].map((model) =>
-        client.messages.countTokens({
-          model,
-          messages: [{ role: 'user', content: 'ping' }],
-        }),
-      ),
-    );
-  } catch (e) {
-    throw friendlyError(e);
+/** 用免費的 count_tokens 端點探測某個模型是否可用（不消耗 token）。 */
+async function probe(client: Anthropic, model: string): Promise<void> {
+  await client.messages.countTokens({
+    model,
+    messages: [{ role: 'user', content: 'ping' }],
+  });
+}
+
+/** 依序找出這把 key 第一個可用的模型；401/網路/限流直接失敗，403/404 換下一個。 */
+async function firstAvailable(client: Anthropic, candidates: string[]): Promise<string> {
+  for (const model of candidates) {
+    try {
+      await probe(client, model);
+      return model;
+    } catch (e) {
+      if (
+        e instanceof Anthropic.AuthenticationError ||
+        e instanceof Anthropic.APIConnectionError ||
+        e instanceof Anthropic.RateLimitError
+      ) {
+        throw friendlyError(e);
+      }
+      // 403/404 = 這把 key 沒有此模型的存取權 → 試下一個候選
+    }
   }
+  throw new Error('這把 API key 沒有任何可用的 Claude 模型存取權，請確認方案或換一把 key。');
+}
+
+/** 解析這把 key 實際可用的 reasoning / fast 模型組合。 */
+export async function resolveModels(client: Anthropic): Promise<ResolvedModels> {
+  const reasoning = await firstAvailable(client, REASONING_CANDIDATES);
+  const fast =
+    reasoning === FAST_CANDIDATES[0]
+      ? reasoning
+      : await firstAvailable(client, FAST_CANDIDATES);
+  return { reasoning, fast };
+}
+
+/**
+ * 啟用前驗證 key：key 無效（401）會失敗；有效但缺部分模型權限時
+ * 會自動 fallback，並回傳實際會使用的模型組合。不消耗任何 token。
+ */
+export async function verifyAnthropicKey(apiKey: string): Promise<ResolvedModels> {
+  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
+  return resolveModels(client);
 }
 
 export class ClaudeProvider implements AiProvider {
@@ -155,27 +187,43 @@ export class ClaudeProvider implements AiProvider {
   readonly label = 'Claude（雲端）';
 
   private client: Anthropic;
+  private modelsPromise: Promise<ResolvedModels> | null = null;
 
   constructor(apiKey: string) {
     // key 只存在本機 IndexedDB；瀏覽器直連需要明確 opt-in
     this.client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
   }
 
+  /** 第一次呼叫時解析可用模型並快取；失敗（如暫時斷網）下次重試。 */
+  private models(): Promise<ResolvedModels> {
+    if (!this.modelsPromise) {
+      this.modelsPromise = resolveModels(this.client).catch((e) => {
+        this.modelsPromise = null;
+        throw e;
+      });
+    }
+    return this.modelsPromise;
+  }
+
   /** 呼叫 API 並取回符合 schema 的 JSON。refusal 或空回應會丟錯給 UI 顯示。 */
   private async json<T>(req: {
-    model: string;
+    tier: 'reasoning' | 'fast';
     system: Anthropic.TextBlockParam[];
     prompt: string;
     schema: Record<string, unknown>;
     maxTokens: number;
     thinking?: boolean;
   }): Promise<T> {
+    const models = await this.models();
+    const model = req.tier === 'fast' ? models.fast : models.reasoning;
+    // adaptive thinking 只有 opus/sonnet 支援；fallback 到 haiku 時不能帶
+    const adaptive = Boolean(req.thinking) && !model.includes('haiku');
     let response: Anthropic.Message;
     try {
       response = await this.client.messages.create({
-        model: req.model,
+        model,
         max_tokens: req.maxTokens,
-        ...(req.thinking ? { thinking: { type: 'adaptive' as const } } : {}),
+        ...(adaptive ? { thinking: { type: 'adaptive' as const } } : {}),
         system: req.system,
         messages: [{ role: 'user', content: req.prompt }],
         output_config: { format: { type: 'json_schema', schema: req.schema } },
@@ -196,7 +244,7 @@ export class ClaudeProvider implements AiProvider {
   async search(question: string, cards: Card[]): Promise<SearchResult> {
     if (cards.length === 0) return { answer: '卡片庫是空的，先寫幾張卡片吧。', citations: [] };
     const result = await this.json<SearchResult>({
-      model: REASONING_MODEL,
+      tier: 'reasoning',
       thinking: true,
       system: [
         {
@@ -221,7 +269,7 @@ export class ClaudeProvider implements AiProvider {
     if (cards.length < 2) return [];
     const focus = focusCardId ? cards.find((c) => c.id === focusCardId) : undefined;
     const result = await this.json<{ suggestions: LinkSuggestion[] }>({
-      model: REASONING_MODEL,
+      tier: 'reasoning',
       thinking: true,
       system: [
         {
@@ -255,7 +303,7 @@ export class ClaudeProvider implements AiProvider {
 
   async extractCardsFromDiary(entry: DiaryEntry, knownTags: string[]): Promise<ExtractedCard[]> {
     const result = await this.json<{ cards: ExtractedCard[] }>({
-      model: REASONING_MODEL,
+      tier: 'reasoning',
       thinking: true,
       system: [
         {
@@ -274,7 +322,7 @@ export class ClaudeProvider implements AiProvider {
 
   async autoClassify(card: Pick<Card, 'title' | 'body' | 'tags'>): Promise<Classification> {
     return this.json<Classification>({
-      model: FAST_MODEL,
+      tier: 'fast',
       system: [
         {
           type: 'text',

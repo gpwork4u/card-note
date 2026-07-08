@@ -38,11 +38,14 @@ export function SettingsDialog() {
     setAiBusy(true);
     setAiMsg(null);
     try {
-      // 免費端點驗證 key 有效，才持久化並切換 provider
-      await verifyAnthropicKey(key);
+      // 免費端點驗證 key 有效並解析可用模型，才持久化並切換 provider
+      const models = await verifyAnthropicKey(key);
       setAnthropicKey(key);
       setProvider(new ClaudeProvider(key));
-      setAiMsg({ kind: 'ok', text: `已驗證並啟用 ${providerLabel()}。AI 搜尋、連結建議、日記擷取與自動分類將改用 Claude。` });
+      setAiMsg({
+        kind: 'ok',
+        text: `已驗證並啟用 ${providerLabel()}（${models.reasoning}${models.fast !== models.reasoning ? ` / ${models.fast}` : ''}）。AI 搜尋、連結建議、日記擷取與自動分類將改用 Claude。`,
+      });
     } catch (e) {
       setAiMsg({ kind: 'err', text: '啟用失敗：' + (e instanceof Error ? e.message : String(e)) });
     } finally {
