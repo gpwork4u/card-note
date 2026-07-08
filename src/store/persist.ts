@@ -20,7 +20,7 @@ function scheduleSettingsSave() {
   if (settingsTimer) clearTimeout(settingsTimer);
   settingsTimer = setTimeout(() => {
     const s = useStore.getState();
-    void saveSettings({ repo: s.repo, pat: s.pat }).catch((e) =>
+    void saveSettings({ repo: s.repo, pat: s.pat, anthropicKey: s.anthropicKey }).catch((e) =>
       console.warn('saveSettings failed', e),
     );
   }, 300);
@@ -38,7 +38,7 @@ export function startPersistence() {
     ) {
       scheduleDataSave();
     }
-    if (state.repo !== prev.repo || state.pat !== prev.pat) {
+    if (state.repo !== prev.repo || state.pat !== prev.pat || state.anthropicKey !== prev.anthropicKey) {
       scheduleSettingsSave();
     }
     prev = state;
@@ -73,6 +73,7 @@ export async function bootstrap() {
     if (settings) {
       st.setRepo(settings.repo ?? null);
       st.setPat(settings.pat ?? '');
+      st.setAnthropicKey(settings.anthropicKey ?? '');
       st.setSyncStatus(settings.repo ? 'ready' : 'unconfigured');
     }
   } catch (e) {

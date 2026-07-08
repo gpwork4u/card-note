@@ -1,6 +1,6 @@
 # 卡片盒筆記系統 — Session Handoff
 
-> 給下一個 session 接續用。最後更新：2026-06-30。專案路徑：`/Volumes/2tb/project/card-note`。
+> 給下一個 session 接續用。最後更新：2026-07-08。專案路徑：`/Volumes/2tb/project/card-note`。
 
 ## 一句話
 
@@ -80,10 +80,10 @@ store 重要 actions：卡片 `addCard/updateCard/deleteCard`；白板 `selectBo
 
 ## 尚未驗證 / 待辦 / 下一步
 
-1. **GitHub 同步尚未做過真實 live 測試**（需要一個測試 repo + fine-grained PAT，Contents 讀寫）。單元層已驗證序列化 round-trip、三方合併、keep-both、NDJSON 集合合併；API client 已 build 過但沒實際 push/pull。**建議下一步：真的接一個 repo 跑一輪 push→第二裝置 pull→模擬同卡雙改→衝突解決。**
-2. **Claude API 未接**：`src/ai/claude.ts` 是 stub。要接：實作四個方法 + 在設定頁存 anthropicKey + `setProvider(new ClaudeProvider(key))`。設定頁已有 disabled 的 key 欄位。
-3. **無專案內正式測試**：Playwright/資料完整性測試目前是 scratchpad 臨時腳本。建議建 vitest（單元）+ playwright（e2e）正式套件。
-4. **專案本身尚未 git init**（資料 repo 與 app repo 是兩回事；app 目錄目前不是 git repo）。若要版控 app，`git init` 一下。
+1. ✅ **GitHub 同步 live 測試已通過（2026-07-08）**：對真實 repo `gpwork4u/card-note-sync-test` 用 app 的 syncEngine 跑完整輪：初次 push → 第二裝置 pull → 同卡雙改 → conflict → keep-both 解決 → 另一裝置拉回合併。非 app 擁有的檔案（README.md）確認原封不動。測試 harness 在 scratchpad（esbuild 打包 + 檔案版 localCache stub），必要時可重建。
+2. ✅ **Claude API 已接（2026-07-08）**：`ClaudeProvider` 實作完成（`@anthropic-ai/sdk` + `dangerouslyAllowBrowser`、structured outputs `output_config.format`、卡片庫放 cached system block、refusal 處理）。模型：搜尋/建議/擷取用 `claude-opus-4-8`（adaptive thinking），分類用 `claude-haiku-4-5`。設定頁 AI 區塊可貼 key 啟用/停用；key 存 IndexedDB，開機自動接線（App.tsx）。**尚未用真實 API key 做過 live 呼叫測試**——在設定頁貼 key 後試 AI 搜尋即可驗證。
+3. ✅ **正式測試已建（2026-07-08）**：`npm test`（vitest 單元 ×24：round-trip、三方合併、衝突解決、gitBlobSha）+ `npm run test:e2e`（playwright 冒煙：四視圖零 console error，自動起 dev server）。
+4. ✅ **app 已 git init 並上 GitHub（2026-07-08）**：`gpwork4u/card-note`（private）。之後變更走分支 + PR（見 git-commit-push 慣例）。
 5. 其他可加：白板上拖曳建立連結、白板排序/封存、圖片/附件處理、AI 建議連結持久化選項。
 
 ## 慣例 / 注意

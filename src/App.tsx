@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useStore } from '@/store';
 import { bootstrap } from '@/store/persist';
 import { configureApi } from '@/sync/syncEngine';
+import { setProvider } from '@/ai';
+import { ClaudeProvider } from '@/ai/claude';
 import { AppShell } from '@/components/layout/AppShell';
 import WhiteboardView from '@/views/WhiteboardView';
 import LibraryView from '@/views/LibraryView';
@@ -36,6 +38,9 @@ export default function App() {
       if (st.repo && st.pat) {
         configureApi(st.repo, st.pat);
         st.setSyncStatus('ready');
+      }
+      if (st.anthropicKey) {
+        setProvider(new ClaudeProvider(st.anthropicKey));
       }
       setReady(true);
     })();
