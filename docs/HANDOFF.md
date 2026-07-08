@@ -1,0 +1,93 @@
+# 卡片盒筆記系統 — Session Handoff
+
+> 給下一個 session 接續用。最後更新：2026-06-30。專案路徑：`/Volumes/2tb/project/card-note`。
+
+## 一句話
+
+從 Claude Design 設計稿實作的 **Zettelkasten 卡片盒筆記系統**：React + Vite + TypeScript 純前端，資料以「一卡一檔」存在 GitHub repo（透過 REST API 同步）、本機 IndexedDB 快取，支援多白板、Heptabase 匯入、手機介面。**目前可正常執行、build 通過、瀏覽器冒煙測試零 console 錯誤。**
+
+設計來源：design MCP 專案 `a7d97c6e-deb8-42da-ad4e-44eaea4543da`，檔案 `卡片盒筆記系統.dc.html`（原稿是不可運作的 mockup，已實作成真應用）。
+
+## 目前狀態（已完成）
+
+- ✅ 四視圖：**白板（多白板）/ 卡片庫 / 看板 / 日記**，忠實還原設計。
+- ✅ 卡片詳情面板（可編輯 標題/內文/型別/標籤、雙向連結、AI 建議連結、所在白板 chips）。
+- ✅ **多白板**：`Board` 內含 `placements:[{cardId,x,y}]`，多對多（一張卡可在多個白板、各有位置）。白板切換 tabs、新增白板、新增卡片、加入既有卡片、拖曳更新位置。
+- ✅ **右鍵選單（context menu）+ 手機長按**：白板（空白處/卡片/連線）、卡片庫卡片、看板卡片。操作含 編輯/變更類型/加入白板/移動到欄/從專案移除/從白板移除/刪除/在此新增卡片/加入既有卡片/重置視圖/刪除連結。
+- ✅ **GitHub 同步引擎**：REST Git Data API（免 proxy）、一卡一檔、三方合併、衝突「保留兩版」、baseline 存 IndexedDB。**（見下方「尚未驗證」）**
+- ✅ **Heptabase 匯入**：`All-Data.json`（whiteboard→board、cardInstance→placement、connection→link）與 Markdown zip。
+- ✅ **AI 骨架**：本機關鍵字/標籤 provider（search/suggestLinks/extractDiary/classify），Claude provider 為預留 stub。
+- ✅ IndexedDB 持久化 + 舊資料自動遷移成預設白板。
+- ✅ 圖示全面改用 **lucide-react**（shadcn 的圖示庫）。響應式（桌機 rail+詳情面板 / 手機底部 tab+全螢幕 sheet）。
+
+## 如何執行 / 驗證
+
+```bash
+cd /Volumes/2tb/project/card-note
+npm install          # 首次
+npm run dev -- --host   # 開發（目前正跑在 http://localhost:5173/）
+npm run build        # tsc --noEmit && vite build（型別+建置驗證）
+npm run typecheck
+```
+
+**冒煙測試**：用 Playwright（已裝為 devDependency）。測試腳本寫在 scratchpad（`/private/tmp/.../scratchpad/*.mjs`，**非專案內、會被清掉**），做法是：`import pw from '<絕對路徑>/node_modules/playwright/index.js'`，`chromium.launch()` → 對 `http://localhost:5173/` 操作 → 檢查文字/截圖 + 收集 console error。資料完整性用 esbuild 打包一個 `@` alias 的 .ts 測試檔跑 node（serialize/parse round-trip、三方合併等）。**建議下一步把這些變成專案內正式測試（vitest + playwright）。**
+
+## 架構關鍵（重要決策）
+
+1. **同步用 GitHub REST API 直連瀏覽器（非 isomorphic-git、無 CORS proxy）**：已驗證 `api.github.com` 支援 CORS、fine-grained PAT 可走 Authorization header。使用者選擇「用 repo token + API」。
+2. **AI 先做骨架**：使用者選擇之後再接 Claude。`src/ai/` 是 provider 介面層，接 Claude 是 drop-in（見 `src/ai/claude.ts` 內的接線註解：`@anthropic-ai/sdk` + `dangerouslyAllowBrowser`、模型 `claude-sonnet-4-6`/`claude-haiku-4-5`、`output_config.format` structured output）。
+3. **多白板（多對多）**：卡片不存座標，位置存在 board placement。
+4. **只碰 app 擁有的檔案**：sync 的 `OWNED_PREFIXES = cards/ projects/ diary/ boards/ + links.ndjson + cardnote.json`；repo 內其他檔（README 等）絕不被刪或合併。
+
+## 資料模型 / git 檔案格式（schemaVersion 2）
+
+```
+<repo>/
+├── cardnote.json          { schemaVersion:2, app:"card-note" }
+├── cards/<ulid>.md        frontmatter(id,type,title,tags,created,updated) + markdown body（無 x/y）
+├── boards/<id>.json       { id, name, placements:[{cardId,x,y}] }
+├── links.ndjson           已確認連結（solid），每行一條、排序；AI 建議連結不進 git
+├── projects/<id>.json     { id, name, color, cols:{todo,doing,done:[cardId]} }
+└── diary/<YYYY-MM-DD>.md   frontmatter(date,processed,extracted) + body
+```
+
+型別定義：`src/types/index.ts`（`Card`, `Board`, `Placement`, `Link`, `Project`, `DiaryEntry`, AI 契約, Sync 契約, `ImportReport`）。
+
+## 模組地圖（src/）
+
+```
+store/index.ts        Zustand 單一 store（所有 state + actions）；persist.ts 做 IndexedDB 鏡像 + bootstrap 遷移
+types/index.ts        全型別
+lib/                  tokens(色票/型別表/KANBAN_COLUMNS) derive(enrichCard/boardView/linkKey/inferType)
+                      bezier ulid format base64 gitBlobSha text cardMenu(右鍵選單項建構器)
+serialization/        card/board/links/project/diary ↔ 檔案；index.ts 的 serializeAll/parseAll 是 git 檔案地圖邊界
+sync/                 githubApi(REST client) syncEngine(狀態機/三方合併) conflict(threeWayMerge/keep-both) localCache(IndexedDB)
+ai/                   index(公開 API aiSearch/aiSuggestLinks/aiExtractDiary/aiClassify) local(現用) claude(stub)
+importers/heptabase/  index allData markdownZip prosemirror mapping schema
+views/                WhiteboardView/(index,CardNode,LinksLayer,BoardTabs,CanvasToolbar,ZoomControls,Hint)
+                      LibraryView/ KanbanView/(index,KanbanCardItem) DiaryView/
+components/
+  layout/             AppShell TopBar LeftRail BottomTabBar DetailHost
+  panels/             CardDetailContent AiSearchOverlay AiSuggestionsContent SyncStatusContent
+                      SettingsDialog ImportDialog ConflictResolver NewProjectModal AddToBoardModal
+  common/             icons(lucide 包裝) ContextMenu CardTypeBadge Modal Sheet
+hooks/                useMediaQuery useKeyboard useLongPress
+```
+
+store 重要 actions：卡片 `addCard/updateCard/deleteCard`；白板 `selectBoard/createBoard/renameBoard/deleteBoard/addCardToBoard/addCardsToBoard/removeCardFromBoard/moveCardOnBoard/createCardOnBoard/openAddToBoard/migrateDefaultBoard`；連結 `addLink/removeLink/acceptLink/dismissLink/setAiSuggestions`；看板 `moveKanbanCard/removeCardFromProject/createProject`；日記 `addDiaryEntry/applyDiaryExtraction`；同步狀態 `setRepo/setPat/setSyncStatus/setCommits/setConflicts`；生命週期 `hydrate/mergeImport/getData`。
+
+同步引擎入口（`src/sync/syncEngine.ts`）：`verifyRepo` / `connectAndSync` / `syncNow` / `resolveConflictsAndSync`。設定頁 `SettingsDialog` 呼叫。
+
+## 尚未驗證 / 待辦 / 下一步
+
+1. **GitHub 同步尚未做過真實 live 測試**（需要一個測試 repo + fine-grained PAT，Contents 讀寫）。單元層已驗證序列化 round-trip、三方合併、keep-both、NDJSON 集合合併；API client 已 build 過但沒實際 push/pull。**建議下一步：真的接一個 repo 跑一輪 push→第二裝置 pull→模擬同卡雙改→衝突解決。**
+2. **Claude API 未接**：`src/ai/claude.ts` 是 stub。要接：實作四個方法 + 在設定頁存 anthropicKey + `setProvider(new ClaudeProvider(key))`。設定頁已有 disabled 的 key 欄位。
+3. **無專案內正式測試**：Playwright/資料完整性測試目前是 scratchpad 臨時腳本。建議建 vitest（單元）+ playwright（e2e）正式套件。
+4. **專案本身尚未 git init**（資料 repo 與 app repo 是兩回事；app 目錄目前不是 git repo）。若要版控 app，`git init` 一下。
+5. 其他可加：白板上拖曳建立連結、白板排序/封存、圖片/附件處理、AI 建議連結持久化選項。
+
+## 慣例 / 注意
+
+- 純 inline style + 少量 `globals.css` 全域 class（`.scrl .hover-raise .hover-tint .reset-btn .icon-btn .anim-* .spinner .hscroll .mono`）。沒有用 Tailwind；圖示用 lucide-react（釘 `0.454.0`，含 `Github` 品牌圖示）。
+- 大型 UI 是用多個平行 subagent 產出（各視圖/importer 各一），核心型別/store/序列化/同步由主 session 定稿以確保契約一致。若要再委派 UI，務必先把 store/型別契約定好再給 agent。
+- 語言：全程繁體中文 UI 與溝通。

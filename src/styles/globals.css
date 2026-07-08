@@ -1,0 +1,215 @@
+:root {
+  --bg: #f3f1ec;
+  --rail: #fbfaf7;
+  --canvas: #f6f4ef;
+  --ink: #1d1d22;
+  --ink-soft: #3f3f48;
+  --muted: #74747e;
+  --muted-2: #9a9aa4;
+  --muted-3: #b0b0b8;
+  --line: rgba(0, 0, 0, 0.07);
+  --line-strong: rgba(0, 0, 0, 0.12);
+  --accent: #4263eb;
+  --violet: #7048e8;
+  --violet-deep: #6438d6;
+  --violet-tint: #f3f0ff;
+  --violet-line: #e3dcfb;
+  --green: #0ca678;
+  --panel-w: 430px;
+  --rail-w: 68px;
+  --topbar-h: 56px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  font-family: 'Noto Sans TC', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  color: var(--ink);
+  background: var(--bg);
+  overscroll-behavior: none;
+}
+
+button {
+  font-family: inherit;
+}
+
+input,
+textarea {
+  font-family: inherit;
+}
+
+::selection {
+  background: #d9defb;
+}
+
+.mono {
+  font-family: 'Space Mono', monospace;
+}
+
+.serif {
+  font-family: 'Noto Serif TC', serif;
+}
+
+/* scrollbars */
+.scrl::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.scrl::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.14);
+  border-radius: 8px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+.scrl::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* animations (ported from the design comp) */
+@keyframes pop {
+  0% {
+    transform: scale(0.96);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@keyframes slidein {
+  0% {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+@keyframes slideup {
+  0% {
+    transform: translateY(100%);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+@keyframes fadein {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.anim-pop {
+  animation: pop 0.16s ease;
+}
+.anim-slidein {
+  animation: slidein 0.2s ease;
+}
+.anim-fadein {
+  animation: fadein 0.15s ease;
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(0, 0, 0, 0.15);
+  border-top-color: var(--violet);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  display: inline-block;
+}
+
+/* generic reset for our buttons used as cards/rows */
+.reset-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+
+/* hover helpers (since we are not using a CSS-in-JS lib) */
+.hover-raise {
+  transition: box-shadow 0.15s, transform 0.15s, border-color 0.15s;
+}
+.hover-raise:hover {
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.09);
+  transform: translateY(-2px);
+}
+.hover-tint {
+  transition: background 0.12s, border-color 0.12s;
+}
+.hover-tint:hover {
+  background: #faf9f6;
+  border-color: rgba(0, 0, 0, 0.13);
+}
+
+.no-select {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* icon-only button (consistent hit area + hover) */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: #9a9aa4;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  flex-shrink: 0;
+}
+.icon-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: #5a6072;
+}
+.icon-btn-danger:hover {
+  background: #fdecec;
+  color: #e03131;
+}
+
+/* hide scrollbar but keep scroll (mobile tag rows / kanban) */
+.hscroll {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.hscroll::-webkit-scrollbar {
+  display: none;
+}
