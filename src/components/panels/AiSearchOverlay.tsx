@@ -23,7 +23,10 @@ export function AiSearchOverlay() {
 
   async function run(q: string) {
     if (!q.trim()) {
+      runIdRef.current += 1; // 作廢仍在途中的請求
       setResult(null);
+      setError(null);
+      setLoading(false);
       return;
     }
     const runId = ++runIdRef.current;

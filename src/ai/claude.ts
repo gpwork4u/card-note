@@ -150,14 +150,11 @@ async function firstAvailable(client: Anthropic, candidates: string[]): Promise<
       await probe(client, model);
       return model;
     } catch (e) {
-      if (
-        e instanceof Anthropic.AuthenticationError ||
-        e instanceof Anthropic.APIConnectionError ||
-        e instanceof Anthropic.RateLimitError
-      ) {
-        throw friendlyError(e);
-      }
-      // 403/404 = 這把 key 沒有此模型的存取權 → 試下一個候選
+      // 只有 403/404（這把 key 沒有此模型的存取權）才試下一個候選；
+      // 401/5xx/網路/限流等都是真錯誤，直接讓使用者看到。
+      const noAccess =
+        e instanceof Anthropic.APIError && (e.status === 403 || e.status === 404);
+      if (!noAccess) throw friendlyError(e);
     }
   }
   throw new Error('這把 API key 沒有任何可用的 Claude 模型存取權，請確認方案或換一把 key。');
