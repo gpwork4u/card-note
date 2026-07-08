@@ -130,16 +130,21 @@ function friendlyError(e: unknown): Error {
 }
 
 /**
- * 啟用前驗證 key：打免費的 count_tokens 端點，key 無效會拿到 401。
+ * 啟用前驗證 key：對 app 實際使用的兩個模型各打一次免費的 count_tokens
+ * 端點——key 無效會拿到 401，缺少某個模型的存取權會拿到 403/404。
  * 不消耗任何 token。
  */
 export async function verifyAnthropicKey(apiKey: string): Promise<void> {
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
   try {
-    await client.messages.countTokens({
-      model: FAST_MODEL,
-      messages: [{ role: 'user', content: 'ping' }],
-    });
+    await Promise.all(
+      [REASONING_MODEL, FAST_MODEL].map((model) =>
+        client.messages.countTokens({
+          model,
+          messages: [{ role: 'user', content: 'ping' }],
+        }),
+      ),
+    );
   } catch (e) {
     throw friendlyError(e);
   }
@@ -231,9 +236,13 @@ export class ClaudeProvider implements AiProvider {
       schema: SUGGEST_SCHEMA,
       maxTokens: 2048,
     });
-    // 過濾：id 必須存在、不能自連、不能與既有連結重複
+    // 過濾：id 必須存在、不能自連、不能與「已確認」連結重複。
+    // AI 建議（type: 'ai'）不算已存在——setAiSuggestions 會整批替換，
+    // 若把它們當 taken，重新產生時會把仍待處理的相同建議全數濾掉。
     const known = new Set(cards.map((c) => c.id));
-    const taken = new Set(existing.map((l) => linkKey(l.a, l.b)));
+    const taken = new Set(
+      existing.filter((l) => l.type === 'solid').map((l) => linkKey(l.a, l.b)),
+    );
     const seen = new Set<string>();
     return result.suggestions.filter((s) => {
       if (!known.has(s.a) || !known.has(s.b) || s.a === s.b) return false;
