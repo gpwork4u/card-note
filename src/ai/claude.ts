@@ -112,6 +112,39 @@ const CLASSIFY_SCHEMA = {
   additionalProperties: false,
 } as const;
 
+/** 把 SDK 例外轉成可直接顯示給使用者的繁中訊息。 */
+function friendlyError(e: unknown): Error {
+  if (e instanceof Anthropic.AuthenticationError) {
+    return new Error('Anthropic API key 無效或已撤銷，請到設定頁更新。');
+  }
+  if (e instanceof Anthropic.RateLimitError) {
+    return new Error('已達 Anthropic API 速率限制，請稍候再試。');
+  }
+  if (e instanceof Anthropic.APIConnectionError) {
+    return new Error('無法連線到 Anthropic API，請檢查網路。');
+  }
+  if (e instanceof Anthropic.APIError) {
+    return new Error(`Claude API 錯誤（${e.status}）：${e.message}`);
+  }
+  return e instanceof Error ? e : new Error(String(e));
+}
+
+/**
+ * 啟用前驗證 key：打免費的 count_tokens 端點，key 無效會拿到 401。
+ * 不消耗任何 token。
+ */
+export async function verifyAnthropicKey(apiKey: string): Promise<void> {
+  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
+  try {
+    await client.messages.countTokens({
+      model: FAST_MODEL,
+      messages: [{ role: 'user', content: 'ping' }],
+    });
+  } catch (e) {
+    throw friendlyError(e);
+  }
+}
+
 export class ClaudeProvider implements AiProvider {
   readonly id = 'claude' as const;
   readonly label = 'Claude（雲端）';
@@ -132,14 +165,19 @@ export class ClaudeProvider implements AiProvider {
     maxTokens: number;
     thinking?: boolean;
   }): Promise<T> {
-    const response = await this.client.messages.create({
-      model: req.model,
-      max_tokens: req.maxTokens,
-      ...(req.thinking ? { thinking: { type: 'adaptive' as const } } : {}),
-      system: req.system,
-      messages: [{ role: 'user', content: req.prompt }],
-      output_config: { format: { type: 'json_schema', schema: req.schema } },
-    });
+    let response: Anthropic.Message;
+    try {
+      response = await this.client.messages.create({
+        model: req.model,
+        max_tokens: req.maxTokens,
+        ...(req.thinking ? { thinking: { type: 'adaptive' as const } } : {}),
+        system: req.system,
+        messages: [{ role: 'user', content: req.prompt }],
+        output_config: { format: { type: 'json_schema', schema: req.schema } },
+      });
+    } catch (e) {
+      throw friendlyError(e);
+    }
     if (response.stop_reason === 'refusal') {
       throw new Error('Claude 拒絕了這個請求，請換個問法。');
     }

@@ -17,6 +17,7 @@ export function AiSearchOverlay() {
 
   const [result, setResult] = useState<SearchResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function run(q: string) {
     if (!q.trim()) {
@@ -24,8 +25,12 @@ export function AiSearchOverlay() {
       return;
     }
     setLoading(true);
+    setError(null);
     try {
       setResult(await aiSearch(q));
+    } catch (e) {
+      setResult(null);
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
@@ -73,6 +78,8 @@ export function AiSearchOverlay() {
               <span style={{ color: '#9a9aa4' }}>
                 <span className="spinner" style={{ marginRight: 8, verticalAlign: 'middle' }} /> 搜尋中…
               </span>
+            ) : error ? (
+              <span style={{ color: '#b0535e' }}>搜尋失敗：{error}</span>
             ) : result ? (
               result.answer
             ) : (

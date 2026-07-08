@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useStore } from '@/store';
 import { connectAndSync, disconnect, verifyRepo } from '@/sync/syncEngine';
 import { setProvider, providerLabel } from '@/ai';
-import { ClaudeProvider } from '@/ai/claude';
+import { ClaudeProvider, verifyAnthropicKey } from '@/ai/claude';
 import { LocalProvider } from '@/ai/local';
 import { Modal } from '@/components/common/Modal';
 import { GithubIcon, ImportIcon, SparkleIcon } from '@/components/common/icons';
@@ -26,17 +26,28 @@ export function SettingsDialog() {
   const storeAnthropicKey = useStore((s) => s.anthropicKey);
   const setAnthropicKey = useStore((s) => s.setAnthropicKey);
   const [aiKey, setAiKeyLocal] = useState(storeAnthropicKey ?? '');
+  const [aiBusy, setAiBusy] = useState(false);
   const [aiMsg, setAiMsg] = useState<{ kind: 'ok' | 'err' | 'info'; text: string } | null>(null);
 
-  function saveAiKey() {
+  async function saveAiKey() {
     const key = aiKey.trim();
     if (!key) {
       setAiMsg({ kind: 'err', text: '請貼上 Anthropic API key（sk-ant-…）。' });
       return;
     }
-    setAnthropicKey(key);
-    setProvider(new ClaudeProvider(key));
-    setAiMsg({ kind: 'ok', text: `已啟用 ${providerLabel()}。AI 搜尋、連結建議、日記擷取與自動分類將改用 Claude。` });
+    setAiBusy(true);
+    setAiMsg(null);
+    try {
+      // 免費端點驗證 key 有效，才持久化並切換 provider
+      await verifyAnthropicKey(key);
+      setAnthropicKey(key);
+      setProvider(new ClaudeProvider(key));
+      setAiMsg({ kind: 'ok', text: `已驗證並啟用 ${providerLabel()}。AI 搜尋、連結建議、日記擷取與自動分類將改用 Claude。` });
+    } catch (e) {
+      setAiMsg({ kind: 'err', text: '啟用失敗：' + (e instanceof Error ? e.message : String(e)) });
+    } finally {
+      setAiBusy(false);
+    }
   }
 
   function disableAi() {
@@ -194,11 +205,13 @@ export function SettingsDialog() {
             type="password"
           />
           <button
-            onClick={saveAiKey}
+            onClick={() => void saveAiKey()}
+            disabled={aiBusy}
             className="reset-btn"
-            style={{ height: 40, padding: '0 16px', borderRadius: 10, background: '#7048e8', color: '#fff', fontSize: 13, fontWeight: 700 }}
+            style={{ height: 40, padding: '0 16px', borderRadius: 10, background: '#7048e8', color: '#fff', fontSize: 13, fontWeight: 700, opacity: aiBusy ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: 6 }}
           >
-            {storeAnthropicKey ? '更新' : '啟用'}
+            {aiBusy && <span className="spinner" style={{ borderTopColor: '#fff' }} />}
+            {aiBusy ? '驗證中…' : storeAnthropicKey ? '更新' : '啟用'}
           </button>
           {storeAnthropicKey && (
             <button

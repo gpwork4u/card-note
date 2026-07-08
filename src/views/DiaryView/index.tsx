@@ -255,6 +255,7 @@ export default function DiaryView() {
   const diary = useStore((s) => s.diary);
   const isPhone = useIsPhone();
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
+  const [extractError, setExtractError] = useState<string | null>(null);
 
   const handleExtract = async (id: string) => {
     // guard: skip if this entry is already being processed or already processed
@@ -267,8 +268,11 @@ export default function DiaryView() {
       next.add(id);
       return next;
     });
+    setExtractError(null);
     try {
       await aiExtractDiary(id);
+    } catch (e) {
+      setExtractError(e instanceof Error ? e.message : String(e));
     } finally {
       setProcessingIds((prev) => {
         const next = new Set(prev);
@@ -285,6 +289,12 @@ export default function DiaryView() {
     >
       <div style={{ maxWidth: 680, margin: '0 auto' }}>
         <Composer hideHint={isPhone} />
+
+        {extractError && (
+          <div style={{ fontSize: 12, color: '#b0535e', background: '#fdf3f4', border: '1px solid #f6e0e2', borderRadius: 8, padding: '8px 10px', marginBottom: 14 }}>
+            AI 擷取失敗：{extractError}
+          </div>
+        )}
 
         {diary.length === 0 ? (
           <div
