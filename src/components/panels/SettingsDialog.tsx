@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useStore } from '@/store';
 import { connectAndSync, disconnect, verifyRepo } from '@/sync/syncEngine';
 import { setProvider, providerLabel } from '@/ai';
@@ -28,6 +28,8 @@ export function SettingsDialog() {
   const [aiKey, setAiKeyLocal] = useState(storeAnthropicKey ?? '');
   const [aiBusy, setAiBusy] = useState(false);
   const [aiMsg, setAiMsg] = useState<{ kind: 'ok' | 'err' | 'info'; text: string } | null>(null);
+  // 每次「停用」遞增；驗證中若使用者按了停用，完成的驗證不得回寫啟用狀態
+  const aiOpRef = useRef(0);
 
   async function saveAiKey() {
     const key = aiKey.trim();
@@ -35,11 +37,13 @@ export function SettingsDialog() {
       setAiMsg({ kind: 'err', text: '請貼上 Anthropic API key（sk-ant-…）。' });
       return;
     }
+    const op = aiOpRef.current;
     setAiBusy(true);
     setAiMsg(null);
     try {
       // 免費端點驗證 key 有效並解析可用模型，才持久化並切換 provider
       const models = await verifyAnthropicKey(key);
+      if (op !== aiOpRef.current) return; // 驗證期間使用者已停用 → 放棄啟用
       setAnthropicKey(key);
       setProvider(new ClaudeProvider(key));
       setAiMsg({
@@ -54,6 +58,7 @@ export function SettingsDialog() {
   }
 
   function disableAi() {
+    aiOpRef.current += 1;
     setAnthropicKey('');
     setAiKeyLocal('');
     setProvider(new LocalProvider());
@@ -219,8 +224,9 @@ export function SettingsDialog() {
           {storeAnthropicKey && (
             <button
               onClick={disableAi}
+              disabled={aiBusy}
               className="reset-btn"
-              style={{ height: 40, padding: '0 14px', borderRadius: 10, border: '1px solid rgba(0,0,0,.12)', color: '#6a6a74', fontSize: 13, fontWeight: 600 }}
+              style={{ height: 40, padding: '0 14px', borderRadius: 10, border: '1px solid rgba(0,0,0,.12)', color: '#6a6a74', fontSize: 13, fontWeight: 600, opacity: aiBusy ? 0.5 : 1 }}
             >
               停用
             </button>
