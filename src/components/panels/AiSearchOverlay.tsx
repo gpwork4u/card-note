@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from '@/store';
 import { aiSearch, aiIsLocal } from '@/ai';
 import type { Card, SearchResult } from '@/types';
@@ -17,17 +17,31 @@ export function AiSearchOverlay() {
 
   const [result, setResult] = useState<SearchResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // 遞增的請求序號：舊請求較慢回來時不能覆蓋新請求的結果
+  const runIdRef = useRef(0);
 
   async function run(q: string) {
     if (!q.trim()) {
+      runIdRef.current += 1; // 作廢仍在途中的請求
       setResult(null);
+      setError(null);
+      setLoading(false);
       return;
     }
+    const runId = ++runIdRef.current;
     setLoading(true);
+    setError(null);
     try {
-      setResult(await aiSearch(q));
+      const r = await aiSearch(q);
+      if (runId !== runIdRef.current) return; // 已有更新的查詢，丟棄這筆
+      setResult(r);
+    } catch (e) {
+      if (runId !== runIdRef.current) return;
+      setResult(null);
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setLoading(false);
+      if (runId === runIdRef.current) setLoading(false);
     }
   }
 
@@ -73,6 +87,8 @@ export function AiSearchOverlay() {
               <span style={{ color: '#9a9aa4' }}>
                 <span className="spinner" style={{ marginRight: 8, verticalAlign: 'middle' }} /> 搜尋中…
               </span>
+            ) : error ? (
+              <span style={{ color: '#b0535e' }}>搜尋失敗：{error}</span>
             ) : result ? (
               result.answer
             ) : (

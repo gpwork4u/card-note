@@ -65,6 +65,7 @@ interface Store {
   syncStatus: SyncStatus;
   repo: RepoConfig | null;
   pat: string;
+  anthropicKey: string;
   commits: CommitInfo[];
   conflicts: Conflict[];
   syncError: string | null;
@@ -143,6 +144,7 @@ interface Store {
   setSyncStatus: (s: SyncStatus) => void;
   setRepo: (r: RepoConfig | null) => void;
   setPat: (p: string) => void;
+  setAnthropicKey: (k: string) => void;
   setCommits: (c: CommitInfo[]) => void;
   setConflicts: (c: Conflict[]) => void;
   setSyncError: (e: string | null) => void;
@@ -194,6 +196,7 @@ export const useStore = create<Store>((set, get) => {
     syncStatus: 'unconfigured',
     repo: null,
     pat: '',
+    anthropicKey: '',
     commits: [],
     conflicts: [],
     syncError: null,
@@ -494,6 +497,7 @@ export const useStore = create<Store>((set, get) => {
     setSyncStatus: (syncStatus) => set({ syncStatus }),
     setRepo: (repo) => set({ repo }),
     setPat: (pat) => set({ pat }),
+    setAnthropicKey: (anthropicKey) => set({ anthropicKey }),
     setCommits: (commits) => set({ commits }),
     setConflicts: (conflicts) => set({ conflicts, conflictOpen: conflicts.length > 0 }),
     setSyncError: (syncError) => set({ syncError, syncStatus: syncError ? 'error' : get().syncStatus }),

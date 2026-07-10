@@ -10,6 +10,7 @@ export function AiSuggestionsContent() {
   const acceptLink = useStore((s) => s.acceptLink);
   const dismissLink = useStore((s) => s.dismissLink);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const cardById = (id: string) => cards.find((c) => c.id === id);
   const suggestions = links
@@ -23,8 +24,11 @@ export function AiSuggestionsContent() {
 
   async function regenerate() {
     setBusy(true);
+    setError(null);
     try {
       await aiSuggestLinks();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -43,6 +47,12 @@ export function AiSuggestionsContent() {
           {busy ? <span className="spinner" /> : <SparkleIcon size={12} />} 重新產生
         </button>
       </div>
+
+      {error && (
+        <div style={{ fontSize: 12, color: '#b0535e', background: '#fdf3f4', border: '1px solid #f6e0e2', borderRadius: 8, padding: '8px 10px', marginBottom: 10 }}>
+          產生建議失敗：{error}
+        </div>
+      )}
 
       {suggestions.map((sg) => (
         <div key={`${sg.a}-${sg.b}`} style={{ border: '1px solid #ece6fb', borderRadius: 12, padding: 12, marginBottom: 10, background: '#fdfcff' }}>

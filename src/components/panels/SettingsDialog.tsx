@@ -1,6 +1,9 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useStore } from '@/store';
 import { connectAndSync, disconnect, verifyRepo } from '@/sync/syncEngine';
+import { setProvider, providerLabel } from '@/ai';
+import { ClaudeProvider, verifyAnthropicKey } from '@/ai/claude';
+import { LocalProvider } from '@/ai/local';
 import { Modal } from '@/components/common/Modal';
 import { GithubIcon, ImportIcon, SparkleIcon } from '@/components/common/icons';
 
@@ -19,6 +22,48 @@ export function SettingsDialog() {
   const [pat, setPatLocal] = useState(storePat ?? '');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err' | 'info'; text: string } | null>(null);
+
+  const storeAnthropicKey = useStore((s) => s.anthropicKey);
+  const setAnthropicKey = useStore((s) => s.setAnthropicKey);
+  const [aiKey, setAiKeyLocal] = useState(storeAnthropicKey ?? '');
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiMsg, setAiMsg] = useState<{ kind: 'ok' | 'err' | 'info'; text: string } | null>(null);
+  // 每次「停用」遞增；驗證中若使用者按了停用，完成的驗證不得回寫啟用狀態
+  const aiOpRef = useRef(0);
+
+  async function saveAiKey() {
+    const key = aiKey.trim();
+    if (!key) {
+      setAiMsg({ kind: 'err', text: '請貼上 Anthropic API key（sk-ant-…）。' });
+      return;
+    }
+    const op = aiOpRef.current;
+    setAiBusy(true);
+    setAiMsg(null);
+    try {
+      // 免費端點驗證 key 有效並解析可用模型，才持久化並切換 provider
+      const models = await verifyAnthropicKey(key);
+      if (op !== aiOpRef.current) return; // 驗證期間使用者已停用 → 放棄啟用
+      setAnthropicKey(key);
+      setProvider(new ClaudeProvider(key));
+      setAiMsg({
+        kind: 'ok',
+        text: `已驗證並啟用 ${providerLabel()}（${models.reasoning}${models.fast !== models.reasoning ? ` / ${models.fast}` : ''}）。AI 搜尋、連結建議、日記擷取與自動分類將改用 Claude。`,
+      });
+    } catch (e) {
+      setAiMsg({ kind: 'err', text: '啟用失敗：' + (e instanceof Error ? e.message : String(e)) });
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  function disableAi() {
+    aiOpRef.current += 1;
+    setAnthropicKey('');
+    setAiKeyLocal('');
+    setProvider(new LocalProvider());
+    setAiMsg({ kind: 'info', text: '已改回本機（離線）模式，key 已從此裝置移除。' });
+  }
 
   if (!open) return null;
 
@@ -155,9 +200,51 @@ export function SettingsDialog() {
           <SparkleIcon size={14} style={{ color: '#7048e8' }} /> AI（Claude）
         </div>
         <div style={{ fontSize: 11.5, color: '#9a9aa4', lineHeight: 1.6, marginBottom: 10 }}>
-          目前 AI 搜尋與連結建議使用本機關鍵字比對。之後可在這裡貼上 Anthropic API key，改用 Claude 做語意理解（瀏覽器直連，key 只存本機）。
+          {storeAnthropicKey
+            ? '已啟用 Claude：AI 搜尋、連結建議、日記擷取與自動分類使用語意理解（瀏覽器直連，key 只存本機 IndexedDB）。'
+            : '目前 AI 搜尋與連結建議使用本機關鍵字比對。貼上 Anthropic API key 即可改用 Claude 做語意理解（瀏覽器直連，key 只存本機）。'}
         </div>
-        <input style={{ ...input, opacity: 0.55 }} disabled placeholder="sk-ant-…（即將推出）" />
+        <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+          <input
+            style={{ ...input, flex: 1, fontFamily: 'Space Mono, monospace' }}
+            value={aiKey}
+            onChange={(e) => setAiKeyLocal(e.target.value)}
+            placeholder="sk-ant-…"
+            type="password"
+          />
+          <button
+            onClick={() => void saveAiKey()}
+            disabled={aiBusy}
+            className="reset-btn"
+            style={{ height: 40, padding: '0 16px', borderRadius: 10, background: '#7048e8', color: '#fff', fontSize: 13, fontWeight: 700, opacity: aiBusy ? 0.6 : 1, display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            {aiBusy && <span className="spinner" style={{ borderTopColor: '#fff' }} />}
+            {aiBusy ? '驗證中…' : storeAnthropicKey ? '更新' : '啟用'}
+          </button>
+          {storeAnthropicKey && (
+            <button
+              onClick={disableAi}
+              disabled={aiBusy}
+              className="reset-btn"
+              style={{ height: 40, padding: '0 14px', borderRadius: 10, border: '1px solid rgba(0,0,0,.12)', color: '#6a6a74', fontSize: 13, fontWeight: 600, opacity: aiBusy ? 0.5 : 1 }}
+            >
+              停用
+            </button>
+          )}
+        </div>
+        {aiMsg && (
+          <div
+            style={{
+              fontSize: 12.5,
+              borderRadius: 8,
+              padding: '9px 11px',
+              background: aiMsg.kind === 'err' ? '#fdf3f4' : aiMsg.kind === 'ok' ? '#e9f9f1' : '#eef1fe',
+              color: aiMsg.kind === 'err' ? '#b0535e' : aiMsg.kind === 'ok' ? '#0a7a55' : '#3a5bd0',
+            }}
+          >
+            {aiMsg.text}
+          </div>
+        )}
       </div>
     </Modal>
   );
