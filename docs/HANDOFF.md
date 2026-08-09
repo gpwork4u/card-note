@@ -95,9 +95,9 @@ app 本身之外，現在有一整條「資料 repo + 雲端 routine」的營運
 3. **Heptabase 原始備份**：`/Users/gpwang/Documents/heptabase/Heptabase-Data-Backup-2026-08-08T16-03-16-896Z/`（未動過）。匯入時 89 張卡為 lossy（media/表格攤平）；Heptabase 的 tagList/cardTagList 已在分類階段融合進卡片 tags。
 4. **注意**：對 card-note-data push 前先 `git pull --rebase`——routine 每 6 小時可能已推新 report commit。
 
-## ⚠️ 目前 app 處於「臨時預覽模式」（未還原）
+## 臨時預覽模式（已於 2026-08-09 還原）
 
-為了讓使用者直接開 `http://localhost:5173/` 看整理成果，本機工作樹有**未 commit 的臨時改動**：`src/data/seed.ts`（seedData 改讀 `src/data/preview-data.json`）、`src/sync/localCache.ts`（DB_NAME 改成 `card-note-preview5`）。**還原方式**：`git checkout src/data/seed.ts src/sync/localCache.ts && rm src/data/preview-data.json`，改回後 DB 名回到 `card-note`。這些檔案**絕不能 commit**。
+先前為了直接開 `http://localhost:5173/` 看整理成果，工作樹曾有臨時改動（seed.ts 讀 preview-data.json、DB_NAME 改 `card-note-preview5`），已全數還原、工作樹乾淨。若日後要再預覽 card-note-data 內容，建議做成正式的「預覽資料集」開關而非臨時改檔。
 
 ## 慣例 / 注意
 
