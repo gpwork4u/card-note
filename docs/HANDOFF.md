@@ -84,7 +84,8 @@ store 重要 actions：卡片 `addCard/updateCard/deleteCard`；白板 `selectBo
 2. ✅ **Claude API 已接（2026-07-08，後經 codex 六輪 review 修正、PR #2 已合併）**：`ClaudeProvider` 實作完成（structured outputs、cached system block、refusal/錯誤處理、模型 entitlement fallback opus-4-8→sonnet-5→haiku-4-5、啟用前 count_tokens 驗證 key）。**尚未用真實 API key 做過 live 呼叫測試**——在設定頁貼 key 後試 AI 搜尋即可驗證。
 3. ✅ **正式測試已建（2026-07-08）**：`npm test`（vitest 單元 ×24：round-trip、三方合併、衝突解決、gitBlobSha）+ `npm run test:e2e`（playwright 冒煙：四視圖零 console error，自動起 dev server）。
 4. ✅ **app 已 git init 並上 GitHub（2026-07-08）**：`gpwork4u/card-note`（private）。之後變更走分支 + PR（見 git-commit-push 慣例）。
-5. 其他可加：白板上拖曳建立連結、白板排序/封存、圖片/附件處理、AI 建議連結持久化選項。
+5. ✅ **多裝置同步強化（2026-08-09）**：(a) 編輯後自動同步（`autoSync.ts`，5 秒 debounce）＋定時拉取（60 秒、僅前景）＋回前景即拉；(b) push 競態自動重試（non-fast-forward 422 → 重抓 head 再合併，最多 3 次）；(c) **結構化合併**——卡片欄位級（type/title/body 逐欄三方、tags 集合合併、updated 取新）、白板 placement 級（成員集合規則、雙拖同卡採本機座標），大幅消滅假衝突，真衝突（同欄位雙改、刪除 vs 編輯）仍走 ConflictResolver；(d) 新裝置連線時若本機還是未動過的種子資料且遠端已有 app 資料 → 直接採用遠端，不再把 demo 卡合併進正式 repo。測試 36/36。**iOS 版尚未移植 (b)(c)(d)，見 card-note-ios docs/ARCHITECTURE.md。**
+6. 其他可加：白板上拖曳建立連結、白板排序/封存、圖片/附件處理、AI 建議連結持久化選項、多分頁互踩防護（Web Locks）。
 
 ## 資料生態系（2026-08-09 之後的營運狀態）
 

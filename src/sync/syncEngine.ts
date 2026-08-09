@@ -1,9 +1,10 @@
 import type { ConflictResolution, RepoConfig } from '@/types';
 import { useStore } from '@/store';
-import { serializeAll, parseAll, type FileMap } from '@/serialization';
+import { serializeAll, parseAll, MANIFEST_PATH, type FileMap } from '@/serialization';
 import { gitBlobSha } from '@/lib/gitBlobSha';
 import { loadBaseline, saveBaseline, type Baseline } from './localCache';
-import { GithubApi, type TreeChange } from './githubApi';
+import { GithubApi, GithubApiError, type TreeChange } from './githubApi';
+import { seedData } from '@/data/seed';
 import { applyResolutions, threeWayMerge } from './conflict';
 
 export type SyncOutcome = 'synced' | 'conflict' | 'nochange';
@@ -148,8 +149,14 @@ function finalize(commitSha: string) {
   return commitSha;
 }
 
-/** Full sync: commit local changes, pull+merge remote, push. */
-export async function syncNow(message = '更新筆記'): Promise<SyncOutcome> {
+function isNonFastForward(e: unknown): boolean {
+  return e instanceof GithubApiError && e.status === 422;
+}
+
+/** Full sync: commit local changes, pull+merge remote, push.
+ *  Retries automatically when another device pushes between our head fetch
+ *  and updateRef (non-fast-forward 422) — the retry re-merges on the new head. */
+export async function syncNow(message = '更新筆記', attempt = 0): Promise<SyncOutcome> {
   if (!api) throw new Error('尚未設定 GitHub 同步');
   const store = useStore.getState();
   store.setSyncError(null);
@@ -200,6 +207,7 @@ export async function syncNow(message = '更新筆記'): Promise<SyncOutcome> {
     finalize(sha);
     return 'synced';
   } catch (e) {
+    if (isNonFastForward(e) && attempt < 2) return syncNow(message, attempt + 1);
     store.setSyncError(errMsg(e));
     throw e;
   }
@@ -226,8 +234,25 @@ export async function resolveConflictsAndSync(resolutions: ConflictResolution[])
   }
 }
 
-/** Used by Settings after a successful verify+save: configure, then do a first sync. */
+/** Used by Settings after a successful verify+save: configure, then do a first sync.
+ *  Fresh device (no baseline) + remote already holds app data + local is still the
+ *  untouched seed → adopt the remote outright instead of merging demo cards into it. */
 export async function connectAndSync(repo: RepoConfig, pat: string): Promise<SyncOutcome> {
   configureApi(repo, pat);
+  const store = useStore.getState();
+  const baseline = await loadBaseline();
+  if (!baseline && sameMap(serializeAll(store.getData()), serializeAll(seedData()))) {
+    const head = await api!.getHeadSha();
+    if (head) {
+      store.setSyncStatus('pulling');
+      const { files: theirs } = await fetchRemoteFiles(head, {});
+      if (theirs[MANIFEST_PATH] !== undefined) {
+        await persistBaseline(head, theirs);
+        store.hydrate(parseAll(theirs));
+        finalize(head);
+        return 'synced';
+      }
+    }
+  }
   return syncNow('來自卡片盒筆記的同步');
 }

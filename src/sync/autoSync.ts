@@ -37,7 +37,18 @@ async function run() {
   }
 }
 
+/** 唯讀裝置也要拿得到新資料：定時拉取 + 回到前景時拉取。
+ *  run() 是完整同步（含推本機變更），遠端沒動時只花一個 HEAD 查詢。 */
+const PULL_INTERVAL_MS = 60_000;
+
 export function startAutoSync() {
+  setInterval(() => {
+    if (document.visibilityState === 'visible') void run();
+  }, PULL_INTERVAL_MS);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') void run();
+  });
+
   let prev = useStore.getState();
   useStore.subscribe((state) => {
     const changed =
