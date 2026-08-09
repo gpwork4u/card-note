@@ -1,6 +1,6 @@
 # 卡片盒筆記系統 — Session Handoff
 
-> 給下一個 session 接續用。最後更新：2026-07-08。專案路徑：`/Volumes/2tb/project/card-note`。
+> 給下一個 session 接續用。最後更新：2026-08-09。專案路徑：`/Volumes/2tb/project/card-note`。
 
 ## 一句話
 
@@ -81,10 +81,23 @@ store 重要 actions：卡片 `addCard/updateCard/deleteCard`；白板 `selectBo
 ## 尚未驗證 / 待辦 / 下一步
 
 1. ✅ **GitHub 同步 live 測試已通過（2026-07-08）**：對真實 repo `gpwork4u/card-note-sync-test` 用 app 的 syncEngine 跑完整輪：初次 push → 第二裝置 pull → 同卡雙改 → conflict → keep-both 解決 → 另一裝置拉回合併。非 app 擁有的檔案（README.md）確認原封不動。測試 harness 在 scratchpad（esbuild 打包 + 檔案版 localCache stub），必要時可重建。
-2. ✅ **Claude API 已接（2026-07-08）**：`ClaudeProvider` 實作完成（`@anthropic-ai/sdk` + `dangerouslyAllowBrowser`、structured outputs `output_config.format`、卡片庫放 cached system block、refusal 處理）。模型：搜尋/建議/擷取用 `claude-opus-4-8`（adaptive thinking），分類用 `claude-haiku-4-5`。設定頁 AI 區塊可貼 key 啟用/停用；key 存 IndexedDB，開機自動接線（App.tsx）。**尚未用真實 API key 做過 live 呼叫測試**——在設定頁貼 key 後試 AI 搜尋即可驗證。
+2. ✅ **Claude API 已接（2026-07-08，後經 codex 六輪 review 修正、PR #2 已合併）**：`ClaudeProvider` 實作完成（structured outputs、cached system block、refusal/錯誤處理、模型 entitlement fallback opus-4-8→sonnet-5→haiku-4-5、啟用前 count_tokens 驗證 key）。**尚未用真實 API key 做過 live 呼叫測試**——在設定頁貼 key 後試 AI 搜尋即可驗證。
 3. ✅ **正式測試已建（2026-07-08）**：`npm test`（vitest 單元 ×24：round-trip、三方合併、衝突解決、gitBlobSha）+ `npm run test:e2e`（playwright 冒煙：四視圖零 console error，自動起 dev server）。
 4. ✅ **app 已 git init 並上 GitHub（2026-07-08）**：`gpwork4u/card-note`（private）。之後變更走分支 + PR（見 git-commit-push 慣例）。
 5. 其他可加：白板上拖曳建立連結、白板排序/封存、圖片/附件處理、AI 建議連結持久化選項。
+
+## 資料生態系（2026-08-09 之後的營運狀態）
+
+app 本身之外，現在有一整條「資料 repo + 雲端 routine」的營運線：
+
+1. **正式資料 repo：`gpwork4u/card-note-data`（private）**。現況：**285 張卡片**（85 張 `~/project` 本機專案盤點卡 + 200 張 Heptabase 匯入卡）、**31 個白板**（30 個 Heptabase 原始白板 + 「專案總覽」）、**1 個看板專案**「本機專案」（待開發 22／進行中 57／已完成 6）、`links.ndjson` 17 條、1 則工作日記。所有卡片經過內容導向分類（型別 tech 94/idea 79/design 20/…，每張 3-5 個標籤）。使用者明確要求：**不要重建/合併 Heptabase 白板，分類做好即可**。
+2. **Claude routine「card-note 筆記整理助手」**（trigger `trig_013kQVPKcbXZUcDLCQrA7arp`，每 6 小時，sonnet-5，管理頁 https://claude.ai/code/routines/trig_013kQVPKcbXZUcDLCQrA7arp ）。行為：讀 card-note-data → 直接 commit `reports/digest-<日期>.md` 到 main；連結建議/日記擷取走 PR。**已驗證整條路**：產出兩份報告、開出 PR #1（8 組連結建議，人工逐一核實後於 2026-08-09 合併，links 9→17）。
+3. **Heptabase 原始備份**：`/Users/gpwang/Documents/heptabase/Heptabase-Data-Backup-2026-08-08T16-03-16-896Z/`（未動過）。匯入時 89 張卡為 lossy（media/表格攤平）；Heptabase 的 tagList/cardTagList 已在分類階段融合進卡片 tags。
+4. **注意**：對 card-note-data push 前先 `git pull --rebase`——routine 每 6 小時可能已推新 report commit。
+
+## ⚠️ 目前 app 處於「臨時預覽模式」（未還原）
+
+為了讓使用者直接開 `http://localhost:5173/` 看整理成果，本機工作樹有**未 commit 的臨時改動**：`src/data/seed.ts`（seedData 改讀 `src/data/preview-data.json`）、`src/sync/localCache.ts`（DB_NAME 改成 `card-note-preview5`）。**還原方式**：`git checkout src/data/seed.ts src/sync/localCache.ts && rm src/data/preview-data.json`，改回後 DB 名回到 `card-note`。這些檔案**絕不能 commit**。
 
 ## 慣例 / 注意
 
