@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useStore } from '@/store';
 import { bootstrap } from '@/store/persist';
 import { configureApi } from '@/sync/syncEngine';
+import { startAutoSync } from '@/sync/autoSync';
 import { setProvider } from '@/ai';
 import { ClaudeProvider } from '@/ai/claude';
 import { AppShell } from '@/components/layout/AppShell';
@@ -42,6 +43,7 @@ export default function App() {
       if (st.anthropicKey) {
         setProvider(new ClaudeProvider(st.anthropicKey));
       }
+      startAutoSync();
       setReady(true);
     })();
   }, []);

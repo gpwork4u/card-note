@@ -32,6 +32,7 @@ export function startPersistence() {
   useStore.subscribe((state) => {
     if (
       state.cards !== prev.cards ||
+      state.boards !== prev.boards ||
       state.links !== prev.links ||
       state.projects !== prev.projects ||
       state.diary !== prev.diary

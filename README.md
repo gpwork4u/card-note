@@ -4,6 +4,8 @@
 
 從設計稿（Claude Design）實作，包含四個主視圖：**白板 / 卡片庫 / 看板 / 日記**，加上卡片詳情（雙向連結）、AI 連結建議、AI 搜尋，與 GitHub 同步。
 
+**🌐 線上版：<https://gpwork4u.github.io/card-note/>**（push main 自動部署；資料存在你自己連的 repo，站點本身不存任何人的筆記）
+
 ![whiteboard](docs/whiteboard.png)
 
 ## 功能
@@ -13,7 +15,7 @@
 - **看板**：多專案，待辦／進行中／已完成三欄，桌機拖放、手機分段切換。
 - **日記**：每日隨手記，一鍵「AI 整理成卡片」抽取成多張卡片。
 - **卡片詳情**：直接編輯標題／內文／型別／標籤；顯示雙向連結與 AI 建議連結（可接受／略過）。
-- **GitHub 同步**：一卡一檔、每次變更一個 commit、完整歷史；衝突時「保留兩版」，**絕不自動覆蓋**。
+- **GitHub 同步**：一卡一檔、每次變更一個 commit、完整歷史；編輯後自動推送（debounce 5 秒）；衝突時「保留兩版」，**絕不自動覆蓋**。
 - **Heptabase 匯入**：支援 `All-Data.json`（含白板座標與連線）與 Markdown 匯出 zip。
 - **離線可用**：資料快取在瀏覽器 IndexedDB，重整不掉、無網路也能編輯，連線後再同步。
 - **響應式**：桌機左側導覽列 + 右側詳情面板；手機底部分頁列 + 全螢幕 bottom sheet。
@@ -38,16 +40,18 @@ npm run typecheck  # 型別檢查
 
 首次開啟會載入一份種子資料，可立即把玩四個視圖。
 
-## 設定 GitHub 同步
+## 設定 GitHub 同步（建立你的資料 repo）
 
-1. 在 GitHub 建立一個**空的儲存庫**（例如 `me/notes`，可設 private）。
-2. 建立 **fine-grained Personal Access Token**：
-   - Repository access：只選這一個 repo
-   - Permissions → Repository → **Contents: Read and write**
-   - 設定到期日
-3. 在 App 右上角「同步」按鈕 → 進入設定，填入帳號、儲存庫名稱、分支（預設 `main`）、Token，按「連線並同步」。
+App 本身不存任何資料——筆記存在**你自己的 GitHub 儲存庫**（資料 repo）。第一次使用照以下步驟建立：
 
-之後每台裝置（含手機瀏覽器）連到同一個 repo 就會同步。你也可以在電腦上用一般 `git clone` 取得實體 Markdown 檔，用其他編輯器查看／編輯。
+1. **建立資料 repo**：到 <https://github.com/new> 建一個**空的儲存庫**（例如 `me/notes`），建議設 **Private**。不要勾任何初始化選項也可以；就算勾了 README 也沒關係——app 只管理它自己的檔案（`cards/`、`boards/`、`projects/`、`diary/`、`links.ndjson`、`cardnote.json`），repo 裡其他檔案（README、LICENSE、assets…）**絕不會被改動或刪除**。
+2. **建立 fine-grained Personal Access Token**：到 <https://github.com/settings/personal-access-tokens/new>：
+   - Repository access：**Only select repositories** → 只選這一個資料 repo
+   - Permissions → Repository permissions → **Contents: Read and write**（其餘全部不需要）
+   - 設定到期日（到期後在設定頁換新 token 即可，資料不受影響）
+3. **在 App 連線**：右上角「同步」按鈕 → 進入設定，填入帳號（owner）、儲存庫名稱、分支（預設 `main`）、Token，按「連線並同步」。app 會先驗證權限，再把本機資料推上去（或把遠端資料拉下來合併）。
+
+之後每台裝置（含手機瀏覽器）連到同一個 repo 就會同步；**編輯後約 5 秒自動推送**，不需要手動按同步（衝突時仍會跳出解決視窗）。你也可以在電腦上用一般 `git clone` 取得實體 Markdown 檔，用其他編輯器查看／編輯。
 
 ### 資料如何存放
 
