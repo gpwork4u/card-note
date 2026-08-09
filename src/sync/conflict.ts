@@ -59,6 +59,91 @@ export interface MergeResult {
   conflicts: Conflict[];
 }
 
+/** three-way scalar: 單側修改自動採用；兩側改成不同值 → null（真衝突） */
+function mergeScalar<T>(base: T, ours: T, theirs: T): { value: T } | null {
+  if (ours === theirs) return { value: ours };
+  if (ours === base) return { value: theirs };
+  if (theirs === base) return { value: ours };
+  return null;
+}
+
+/** three-way 集合成員資格：一個成員只有在「恰好一側相對 base 移除它」時才消失 */
+function memberPresent(inB: boolean, inO: boolean, inT: boolean): boolean {
+  return inO === inT ? inO : inO !== inB ? inO : inT;
+}
+
+/**
+ * 卡片欄位級三方合併：A 改內文、B 改標籤不再是整檔衝突。
+ * type/title/body 逐欄位 three-way；tags 做集合合併（保序：ours 順序優先）；
+ * updated 取較新。同一欄位兩側改成不同值才回傳 null（升級成整檔衝突）。
+ */
+export function mergeCardFiles(base: string | undefined, ours: string, theirs: string): string | null {
+  const id = 'merge-tmp';
+  const b = base !== undefined ? parseCard(base, id) : null;
+  const o = parseCard(ours, id);
+  const t = parseCard(theirs, id);
+  if (o.id !== t.id) return null; // 不同卡落在同一路徑——不該發生，交給整檔衝突
+
+  const type = mergeScalar(b?.type, o.type, t.type);
+  const title = mergeScalar(b?.title, o.title, t.title);
+  const body = mergeScalar(b?.body, o.body, t.body);
+  if (!type || !title || !body) return null;
+
+  const bTags = new Set(b?.tags ?? []);
+  const oTags = new Set(o.tags);
+  const tTags = new Set(t.tags);
+  const tags = [...o.tags, ...t.tags.filter((x) => !oTags.has(x))].filter((tag) =>
+    memberPresent(bTags.has(tag), oTags.has(tag), tTags.has(tag)),
+  );
+
+  return serializeCard({
+    ...o,
+    type: type.value!,
+    title: title.value!,
+    body: body.value!,
+    tags,
+    created: o.created < t.created ? o.created : t.created,
+    updated: o.updated > t.updated ? o.updated : t.updated,
+  });
+}
+
+/**
+ * 白板 placement 級三方合併：A 拖卡片 1、B 拖卡片 2 不再是整檔衝突。
+ * 成員資格照集合規則（單側移除才消失）；同一張卡兩側拖到不同位置時
+ * 採 ours（座標是外觀狀態，不值得跳衝突視窗）。名稱兩側改成不同值 → null。
+ */
+export function mergeBoardFiles(base: string | undefined, ours: string, theirs: string): string | null {
+  const id = 'merge-tmp';
+  const b = base !== undefined ? parseBoard(base, id) : null;
+  const o = parseBoard(ours, id);
+  const t = parseBoard(theirs, id);
+  if (o.id !== t.id) return null;
+
+  const name = mergeScalar(b?.name, o.name, t.name);
+  if (!name) return null;
+
+  const bIds = new Set((b?.placements ?? []).map((p) => p.cardId));
+  const oById = new Map(o.placements.map((p) => [p.cardId, p]));
+  const tById = new Map(t.placements.map((p) => [p.cardId, p]));
+  const order = [...o.placements.map((p) => p.cardId), ...t.placements.map((p) => p.cardId).filter((c) => !oById.has(c))];
+
+  const placements = order
+    .filter((cardId) => memberPresent(bIds.has(cardId), oById.has(cardId), tById.has(cardId)))
+    .map((cardId) => {
+      const op = oById.get(cardId);
+      const tp = tById.get(cardId);
+      if (op && tp) {
+        const bp = b?.placements.find((p) => p.cardId === cardId);
+        // 只有遠端動過（本機位置還在 base）→ 採遠端；其餘（含兩側都動）採本機
+        const oursUnmoved = bp !== undefined && bp.x === op.x && bp.y === op.y;
+        return oursUnmoved ? tp : op;
+      }
+      return (op ?? tp)!;
+    });
+
+  return serializeBoard({ id: o.id, name: name.value!, placements });
+}
+
 /**
  * base = content at last sync, ours = local now, theirs = remote now.
  * Auto-resolves anything only one side changed; surfaces genuine both-sides-changed
@@ -92,7 +177,20 @@ export function threeWayMerge(base: FileMap, ours: FileMap, theirs: FileMap): Me
       if (o !== undefined) merged[path] = o; // only local changed
       continue;
     }
-    // both sides changed differently → real conflict
+    // both sides changed → try structured (field/placement-level) merge first
+    if (o !== undefined && t !== undefined) {
+      const structured =
+        kindOf(path) === 'card'
+          ? mergeCardFiles(b, o, t)
+          : kindOf(path) === 'board'
+            ? mergeBoardFiles(b, o, t)
+            : null;
+      if (structured !== null) {
+        merged[path] = structured;
+        continue;
+      }
+    }
+    // genuinely irreconcilable → real conflict
     conflicts.push({ path, kind: kindOf(path), ours: o ?? '', theirs: t ?? '', base: b });
     if (o !== undefined) merged[path] = o; // tentative; resolution overwrites
   }
