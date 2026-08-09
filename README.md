@@ -105,6 +105,49 @@ updated: 2026-06-27T09:00:00Z
 目前 AI（搜尋、連結建議、日記抽卡、自動分類）使用**本機關鍵字／標籤比對**，離線可用、零成本。
 程式以 `src/ai/provider.ts` 介面層設計，之後可在 `src/ai/claude.ts` 接上 **Claude API**（瀏覽器直連、使用者自備 Anthropic API key、`dangerouslyAllowBrowser`、模型 `claude-sonnet-4-6` / `claude-haiku-4-5`），即為 drop-in 替換，UI 不需更動。設定頁已預留 API key 欄位。
 
+## 用 AI 自動整理筆記（可選）
+
+資料 repo 就是一般的 git 檔案（Markdown + JSON），所以任何能讀寫 git 的 AI agent 都可以定時當「整理助手」：產生摘要報告、建議卡片連結、把日記抽成卡片。以下兩種做法擇一即可。
+
+**共同的安全守則**（不管用哪種 agent，prompt 裡都建議寫明）：
+
+- **報告類產出**（如 `reports/digest-<日期>.md`）可以直接 commit 到 main——`reports/` 不在 app 的管理範圍（app 只管 `cards/` `boards/` `projects/` `diary/` `links.ndjson` `cardnote.json`），不會被同步或誤刪。
+- **會動到筆記本體的變更**（新增連結、改卡片、日記抽卡）一律**開 PR**，由你人工核實後合併——AI 建議的連結品質需要人把關。
+- push 前先 `git pull --rebase`——app 端的自動同步隨時可能推新 commit。
+
+### 方法一：Claude Code routine（雲端排程，免自備機器）
+
+在 Claude Code 裡輸入 `/schedule`（或到 <https://claude.ai/code> 的 Routines 管理頁）建立一個排程 agent，設定 repo 為你的資料 repo、排程如「每 6 小時」，prompt 範例：
+
+```
+你是卡片盒筆記的整理助手。讀取這個 repo 的 cards/、links.ndjson、diary/：
+1. 產生一份整理報告 reports/digest-<今日日期>.md：新卡摘要、標籤分佈變化、
+   孤島卡片（沒有任何連結的卡）清單。直接 commit 到 main。
+2. 找出 3-8 組「內容高度相關但尚未連結」的卡片配對，附上理由，
+   以修改 links.ndjson 的方式開一個 PR（不要直接推 main）。
+3. 若 diary/ 有 processed: false 的日記，將可獨立成卡的段落抽成 cards/ 新卡，
+   同樣開 PR。
+不要動 cards/ 既有內容、boards/、projects/ 與 repo 內其他檔案。
+```
+
+這條路已實際運轉驗證過：routine 每 6 小時產出 digest 報告、連結建議走 PR 人工核實後合併。
+
+### 方法二：codex CLI + 本機排程（資料不離開自己的機器）
+
+用 [OpenAI codex CLI](https://github.com/openai/codex)（或 `claude` CLI 的 headless 模式 `claude -p`）配 cron，在本機 clone 上跑同樣的整理 prompt：
+
+```bash
+# crontab -e（每 6 小時）
+0 */6 * * * cd ~/notes-data && git pull --rebase && \
+  codex exec --full-auto "讀取本 repo 的卡片與日記，產生 reports/digest-$(date +\%F).md 整理報告；\
+  發現值得建立的卡片連結時，開分支修改 links.ndjson 並用 gh pr create 開 PR，不要直接推 main。" && \
+  git push
+```
+
+`claude` CLI 版本把 `codex exec --full-auto "…"` 換成 `claude -p "…" --allowedTools "Bash,Read,Write,Edit"` 即可。本機排程的好處是筆記內容不需要授權給雲端 agent 執行環境；代價是機器要開著才會跑。
+
+兩種做法產出的 commit / PR，app 端都會透過自動同步的三方合併自然拉進來（`reports/` 除外，app 會忽略）。
+
 ## 部署
 
 純靜態站，`npm run build` 後把 `dist/` 丟到任何靜態主機：
