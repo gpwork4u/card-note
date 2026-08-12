@@ -149,6 +149,20 @@ function finalize(commitSha: string) {
   return commitSha;
 }
 
+/**
+ * 同步結果落地。await 期間使用者可能又編輯了——不能直接用 merged 蓋掉，
+ * 要以「同步開始時的狀態」為 base 把當下編輯 rebase 到同步結果上
+ * （同欄位衝突時當下編輯優先，autoSync 會在下一輪把它推上去）。
+ */
+function adoptSyncResult(merged: FileMap, oursAtStart: FileMap) {
+  const store = useStore.getState();
+  const current = serializeAll(store.getData());
+  const final = sameMap(current, oursAtStart)
+    ? merged
+    : threeWayMerge(oursAtStart, current, merged).merged;
+  store.hydrate(parseAll(final));
+}
+
 function isNonFastForward(e: unknown): boolean {
   return e instanceof GithubApiError && e.status === 422;
 }
@@ -203,7 +217,7 @@ export async function syncNow(message = '更新筆記', attempt = 0): Promise<Sy
     // (e.g. non-fast-forward) leaves local state and baseline consistent.
     const sha = await commitFiles(merged, treeSha, [head], message);
     await persistBaseline(sha, merged);
-    store.hydrate(parseAll(merged));
+    adoptSyncResult(merged, ours);
     finalize(sha);
     return 'synced';
   } catch (e) {
@@ -224,7 +238,8 @@ export async function resolveConflictsAndSync(resolutions: ConflictResolution[])
     // push first; only mutate the store + clear conflicts once it actually lands
     const sha = await commitFiles(final, pending.baseTreeSha, [pending.remoteCommit], '解決同步衝突後合併');
     await persistBaseline(sha, final);
-    store.hydrate(parseAll(final));
+    // base 用產生衝突那次同步開始時的狀態——衝突視窗開著期間的編輯也要保留
+    adoptSyncResult(final, pending.ours);
     store.setConflicts([]);
     finalize(sha);
     pending = null;
