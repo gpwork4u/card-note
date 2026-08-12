@@ -146,3 +146,25 @@ describe('threeWayMerge 整合結構化合併', () => {
     expect(conflicts).toHaveLength(1);
   });
 });
+
+describe('同步期間編輯的 rebase 語意（adoptSyncResult 核心）', () => {
+  it('base=同步開始、ours=當下編輯、theirs=同步結果 → 編輯保留、遠端新卡不丟', () => {
+    const syncStart = { [cardPath(baseCard.id)]: cardFile({}) };
+    const current = { [cardPath(baseCard.id)]: cardFile({ body: '同步期間的編輯' }) };
+    const merged = {
+      [cardPath(baseCard.id)]: cardFile({}),
+      'cards/01REMOTENEW.md': cardFile({ id: '01REMOTENEW', title: '遠端新卡' } as never),
+    };
+    const final = threeWayMerge(syncStart, current, merged).merged;
+    expect(final[cardPath(baseCard.id)]).toContain('同步期間的編輯');
+    expect(final['cards/01REMOTENEW.md']).toBeDefined();
+  });
+
+  it('同一欄位「同步期間編輯」與「同步結果」都改 → 當下編輯優先（暫定值語意）', () => {
+    const syncStart = { [cardPath(baseCard.id)]: cardFile({}) };
+    const current = { [cardPath(baseCard.id)]: cardFile({ body: '最新的本機編輯' }) };
+    const merged = { [cardPath(baseCard.id)]: cardFile({ body: '同步進來的版本' }) };
+    const final = threeWayMerge(syncStart, current, merged).merged;
+    expect(final[cardPath(baseCard.id)]).toContain('最新的本機編輯');
+  });
+});
