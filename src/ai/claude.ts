@@ -27,6 +27,11 @@ const CARD_TYPES: CardType[] = ['idea', 'research', 'compete', 'meeting', 'desig
 /** 每張卡片內文放進 context 的長度上限（幾百張卡也能整包進 cached system block）。 */
 const BODY_LIMIT = 600;
 
+/** adaptive thinking 的思考 token 跟回應共用 max_tokens，額度抓太小會在思考完之後
+ *  把 JSON 切一半。max_tokens 只是上限、不是花費，實際只算產出的 token。 */
+const REASONING_MAX_TOKENS = 16000;
+const CLASSIFY_MAX_TOKENS = 1024;
+
 function cardLine(c: Card): string {
   const body = c.body.length > BODY_LIMIT ? c.body.slice(0, BODY_LIMIT) + '…' : c.body;
   const tags = c.tags.length ? ' :: #' + c.tags.join(' #') : '';
@@ -231,6 +236,10 @@ export class ClaudeProvider implements AiProvider {
     if (response.stop_reason === 'refusal') {
       throw new Error('Claude 拒絕了這個請求，請換個問法。');
     }
+    // 截斷的 JSON 一定 parse 不起來，直接說清楚原因而不是丟語法錯誤給使用者
+    if (response.stop_reason === 'max_tokens') {
+      throw new Error('回應過長被截斷了，請縮小問題範圍或減少卡片數量後再試。');
+    }
     const text = response.content.find(
       (b): b is Anthropic.TextBlock => b.type === 'text',
     )?.text;
@@ -252,7 +261,7 @@ export class ClaudeProvider implements AiProvider {
       ],
       prompt: `問題：${question}`,
       schema: SEARCH_SCHEMA,
-      maxTokens: 2048,
+      maxTokens: REASONING_MAX_TOKENS,
     });
     const known = new Set(cards.map((c) => c.id));
     return { ...result, citations: result.citations.filter((c) => known.has(c.cardId)) };
@@ -279,7 +288,7 @@ export class ClaudeProvider implements AiProvider {
         ? `請建議與卡片 [${focus.id}]「${focus.title}」相關的其他卡片。`
         : '請在整個卡片庫中建議值得連結的卡片配對。',
       schema: SUGGEST_SCHEMA,
-      maxTokens: 2048,
+      maxTokens: REASONING_MAX_TOKENS,
     });
     // 過濾：id 必須存在、不能自連、不能與「已確認」連結重複。
     // AI 建議（type: 'ai'）不算已存在——setAiSuggestions 會整批替換，
@@ -312,7 +321,7 @@ export class ClaudeProvider implements AiProvider {
       ],
       prompt: `日記（${entry.date}）：\n\n${entry.text}`,
       schema: EXTRACT_SCHEMA,
-      maxTokens: 2048,
+      maxTokens: REASONING_MAX_TOKENS,
     });
     return result.cards;
   }
@@ -328,7 +337,7 @@ export class ClaudeProvider implements AiProvider {
       ],
       prompt: `標題：${card.title}\n內文：${card.body.slice(0, BODY_LIMIT)}\n現有標籤：${card.tags.join('、') || '無'}`,
       schema: CLASSIFY_SCHEMA,
-      maxTokens: 256,
+      maxTokens: CLASSIFY_MAX_TOKENS,
     });
   }
 }
