@@ -87,7 +87,8 @@ store 重要 actions：卡片 `addCard/updateCard/deleteCard`；白板 `selectBo
 4. ✅ **app 已上 GitHub 並公開部署**：`gpwork4u/card-note`（2026-08-09 轉 **public**）。**GitHub Pages 自動部署**：push main → Actions build → https://gpwork4u.github.io/card-note/ （`.github/workflows/deploy-pages.yml`）。變更走分支 + PR（見 git-commit-push 慣例）。README 已含「建立資料 repo」指引與「用 AI 自動整理筆記」章節（Claude routine / codex automation / CLI+cron 三種做法）。
 5. ✅ **多裝置同步強化（2026-08-09）**：(a) 編輯後自動同步（`autoSync.ts`，5 秒 debounce）＋定時拉取（60 秒、僅前景）＋回前景即拉；(b) push 競態自動重試（non-fast-forward 422 → 重抓 head 再合併，最多 3 次）；(c) **結構化合併**——卡片欄位級（type/title/body 逐欄三方、tags 集合合併、updated 取新）、白板 placement 級（成員集合規則、雙拖同卡採本機座標），大幅消滅假衝突，真衝突（同欄位雙改、刪除 vs 編輯）仍走 ConflictResolver；(d) 新裝置連線時若本機還是未動過的種子資料且遠端已有 app 資料 → 直接採用遠端，不再把 demo 卡合併進正式 repo。測試 36/36。**iOS 版已同步移植全套（card-note-ios PR #1，18 tests）。**
 6. ✅ **同步期間編輯不再被覆蓋（2026-08-12，PR #9）**：codex review iOS 版時發現的 critical 同樣存在 web——`hydrate(parseAll(merged))` 會蓋掉 await 期間的編輯。`adoptSyncResult()` 以同步開始狀態為 base 把當下編輯 rebase 到同步結果上；衝突解決路徑（base 用 `pending.ours`）一併處理。web 測試 38/38。
-7. 其他可加：白板上拖曳建立連結、白板排序/封存、圖片/附件處理、AI 建議連結持久化選項、多分頁互踩防護（Web Locks）、web/iOS 模型候選序列升級（如加入 claude-opus-5，**必須兩端同步改**）。
+7. ✅ **多分頁互踩防護（2026-08-17）**：同一瀏覽器開多個分頁時，兩邊各自的記憶體 store 會對同一份 IndexedDB baseline 做三方合併而互相回退。`src/lib/tabLock.ts` 用 **Web Locks**（`card-note-primary-tab`，callback 回傳永不 resolve 的 promise 以持有到分頁關閉）選出唯一作用中分頁；其餘分頁顯示「已在另一個分頁開啟」待命畫面，**不 bootstrap、不寫 IndexedDB、不同步**，等鎖釋放後自動走同一段啟動流程接手。不支援 Web Locks 的環境退化成取得鎖（行為同以前）。同時修掉 StrictMode 下啟動 effect 跑兩次造成的重複 `startAutoSync`（重複訂閱 + 雙計時器）。測試 43 unit + 2 e2e（含雙分頁待命/接手）。**iOS 版不需要對應改動**（單一 app 實例）。
+8. 其他可加：白板上拖曳建立連結、白板排序/封存、圖片/附件處理、AI 建議連結持久化選項、web/iOS 模型候選序列升級（如加入 claude-opus-5，**必須兩端同步改**）。
 
 ## 資料生態系（2026-08-09 之後的營運狀態）
 
