@@ -102,8 +102,19 @@ updated: 2026-06-27T09:00:00Z
 
 ## AI 功能
 
-目前 AI（搜尋、連結建議、日記抽卡、自動分類）使用**本機關鍵字／標籤比對**，離線可用、零成本。
-程式以 `src/ai/provider.ts` 介面層設計，之後可在 `src/ai/claude.ts` 接上 **Claude API**（瀏覽器直連、使用者自備 Anthropic API key、`dangerouslyAllowBrowser`、模型 `claude-sonnet-4-6` / `claude-haiku-4-5`），即為 drop-in 替換，UI 不需更動。設定頁已預留 API key 欄位。
+四項功能：卡片庫的自然語言搜尋、卡片詳情的建議連結、日記抽成卡片、自動分類（型別＋標籤）。有兩個 provider，介面定義在 `src/ai/index.ts`：
+
+- **本機**（預設）：關鍵字／標籤比對。離線可用、零成本，內容完全不外傳。沒填 API key 時用的就是它。
+- **Claude API**：在設定頁填入你自備的 Anthropic API key 後啟用。瀏覽器直連（`dangerouslyAllowBrowser`），key 只存在本機 IndexedDB，不會進 git，也不會經過任何第三方伺服器。
+
+Claude provider（`src/ai/claude.ts`）的幾個實作重點：
+
+- **structured outputs**：以 `output_config.format` 帶 JSON Schema，回傳保證可解析，不必從自由文字裡撈 JSON。
+- **前綴快取**：整個卡片庫放進一個標了 `cache_control` 的 system block，連續多次查詢重用同一份快取。
+- **分層用模型**：搜尋／建議／抽卡走 reasoning 模型並開啟 adaptive thinking；分類量大而輕，走 fast 模型。
+- **依 key 權限自動 fallback**：`claude-opus-4-8` → `claude-sonnet-5` → `claude-haiku-4-5`（分類則反向優先 haiku）。啟用前用免費的 `count_tokens` 端點驗證 key 與模型權限，不消耗任何 token。
+
+> Claude provider 已有離線測試覆蓋請求形狀與回應處理（`tests/unit/claudeProvider.test.ts`），但**尚未用真實 API key 跑過完整的 live 呼叫**。
 
 ## 語音草稿收件匣（iPhone，可選）
 
@@ -187,7 +198,7 @@ src/
 ├── store/            Zustand store + IndexedDB 持久化（persist）
 ├── serialization/    Card/Link/Project/Diary ↔ Markdown/NDJSON（git 檔案格式的唯一邊界）
 ├── sync/             githubApi、syncEngine（狀態機）、conflict（三方合併/保留兩版）、localCache
-├── ai/               provider 介面、local（現用）、claude（預留）
+├── ai/               provider 介面、local（離線預設）、claude（Claude API）
 ├── importers/heptabase/  All-Data.json / Markdown zip 解析與映射
 ├── views/            WhiteboardView / LibraryView / KanbanView / DiaryView
 └── components/       layout（AppShell/Rail/TopBar/BottomTabBar/DetailHost）、panels、common

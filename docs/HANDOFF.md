@@ -1,6 +1,6 @@
 # 卡片盒筆記系統 — Session Handoff
 
-> 給下一個 session 接續用。最後更新：2026-08-16。
+> 給下一個 session 接續用。最後更新：2026-08-19。
 > web 版路徑：`/Volumes/2tb/project/card-note`；iOS 版路徑：`/Volumes/2tb/project/card-note-ios`（見下方「iOS 版」章節與該 repo 的 `docs/ARCHITECTURE.md`）。
 
 ## 一句話
@@ -17,7 +17,7 @@
 - ✅ **右鍵選單（context menu）+ 手機長按**：白板（空白處/卡片/連線）、卡片庫卡片、看板卡片。操作含 編輯/變更類型/加入白板/移動到欄/從專案移除/從白板移除/刪除/在此新增卡片/加入既有卡片/重置視圖/刪除連結。
 - ✅ **GitHub 同步引擎**：REST Git Data API（免 proxy）、一卡一檔、三方合併、衝突「保留兩版」、baseline 存 IndexedDB。**（見下方「尚未驗證」）**
 - ✅ **Heptabase 匯入**：`All-Data.json`（whiteboard→board、cardInstance→placement、connection→link）與 Markdown zip。
-- ✅ **AI 骨架**：本機關鍵字/標籤 provider（search/suggestLinks/extractDiary/classify），Claude provider 為預留 stub。
+- ✅ **AI 兩個 provider**：本機關鍵字/標籤（離線預設）與 **Claude API**（設定頁填 key 後啟用）。兩者都實作 search/suggestLinks/extractDiary/classify。
 - ✅ IndexedDB 持久化 + 舊資料自動遷移成預設白板。
 - ✅ 圖示全面改用 **lucide-react**（shadcn 的圖示庫）。響應式（桌機 rail+詳情面板 / 手機底部 tab+全螢幕 sheet）。
 
@@ -36,7 +36,7 @@ npm run typecheck
 ## 架構關鍵（重要決策）
 
 1. **同步用 GitHub REST API 直連瀏覽器（非 isomorphic-git、無 CORS proxy）**：已驗證 `api.github.com` 支援 CORS、fine-grained PAT 可走 Authorization header。使用者選擇「用 repo token + API」。
-2. **AI 先做骨架**：使用者選擇之後再接 Claude。`src/ai/` 是 provider 介面層，接 Claude 是 drop-in（見 `src/ai/claude.ts` 內的接線註解：`@anthropic-ai/sdk` + `dangerouslyAllowBrowser`、模型 `claude-sonnet-4-6`/`claude-haiku-4-5`、`output_config.format` structured output）。
+2. **AI 走 provider 介面層**：`src/ai/` 可替換 provider，本機（離線預設）與 Claude 各一。Claude 端用 `@anthropic-ai/sdk` + `dangerouslyAllowBrowser`、`output_config.format` structured output、cached system block，模型候選 `claude-opus-4-8`→`claude-sonnet-5`→`claude-haiku-4-5`（分類反向）。
 3. **多白板（多對多）**：卡片不存座標，位置存在 board placement。
 4. **只碰 app 擁有的檔案**：sync 的 `OWNED_PREFIXES = cards/ projects/ diary/ boards/ + links.ndjson + cardnote.json`；repo 內其他檔（README 等）絕不被刪或合併。
 
@@ -63,7 +63,7 @@ lib/                  tokens(色票/型別表/KANBAN_COLUMNS) derive(enrichCard/
                       bezier ulid format base64 gitBlobSha text cardMenu(右鍵選單項建構器)
 serialization/        card/board/links/project/diary ↔ 檔案；index.ts 的 serializeAll/parseAll 是 git 檔案地圖邊界
 sync/                 githubApi(REST client) syncEngine(狀態機/三方合併) conflict(threeWayMerge/keep-both) localCache(IndexedDB)
-ai/                   index(公開 API aiSearch/aiSuggestLinks/aiExtractDiary/aiClassify) local(現用) claude(stub)
+ai/                   index(公開 API aiSearch/aiSuggestLinks/aiExtractDiary/aiClassify) local(離線預設) claude(Claude API)
 importers/heptabase/  index allData markdownZip prosemirror mapping schema
 views/                WhiteboardView/(index,CardNode,LinksLayer,BoardTabs,CanvasToolbar,ZoomControls,Hint)
                       LibraryView/ KanbanView/(index,KanbanCardItem) DiaryView/

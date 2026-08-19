@@ -2,8 +2,8 @@ import type { AiProvider, SearchResult } from '@/types';
 import { useStore } from '@/store';
 import { LocalProvider } from './local';
 
-// Current provider. Local (offline) by default; ClaudeProvider can be swapped in
-// once the user configures an API key and ./claude.ts is wired up.
+// Current provider. Local (offline) by default; App swaps in ClaudeProvider on
+// boot when the user has saved an Anthropic API key.
 let provider: AiProvider = new LocalProvider();
 
 export function setProvider(p: AiProvider) {
