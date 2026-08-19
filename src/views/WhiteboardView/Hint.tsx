@@ -16,6 +16,7 @@ export function Hint() {
       <span>拖曳空白處平移</span>
       <span>拖曳卡片移動</span>
       <span>點卡片開啟</span>
+      <span>拖右緣圓點到另一張卡建立連結</span>
     </div>
   );
 }

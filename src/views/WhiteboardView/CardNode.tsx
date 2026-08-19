@@ -5,7 +5,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react';
 import type { Card, Link } from '@/types';
-import { CARD_W } from '@/lib/tokens';
+import { CARD_CY, CARD_W } from '@/lib/tokens';
 import { enrichCard } from '@/lib/derive';
 import { LinkIcon } from '@/components/common/icons';
 import { TypeDot } from '@/components/common/CardTypeBadge';
@@ -21,6 +21,12 @@ interface CardNodeProps {
   onPointerUp: (e: ReactPointerEvent<HTMLDivElement>, cardId: string) => void;
   onPointerCancel: (e: ReactPointerEvent<HTMLDivElement>) => void;
   onContextMenu?: (e: ReactMouseEvent<HTMLDivElement>, cardId: string) => void;
+  /** pressing the link handle starts a drag-to-connect gesture */
+  onLinkStart?: (e: ReactPointerEvent<HTMLDivElement>, cardId: string) => void;
+  /** this card is the source of the in-flight link drag */
+  linkSource?: boolean;
+  /** the in-flight link drag is currently hovering this card */
+  linkTarget?: boolean;
 }
 
 function CardNodeBase({
@@ -33,6 +39,9 @@ function CardNodeBase({
   onPointerUp,
   onPointerCancel,
   onContextMenu,
+  onLinkStart,
+  linkSource,
+  linkTarget,
 }: CardNodeProps) {
   // enrich locally so re-renders are scoped: this only recomputes when the card
   // object or the links array reference changes (handled by the memo wrapper).
@@ -41,6 +50,8 @@ function CardNodeBase({
 
   return (
     <div
+      className="card-node"
+      data-card-id={card.id}
       onPointerDown={(e) => onPointerDown(e, card.id, x, y)}
       onPointerUp={(e) => onPointerUp(e, card.id)}
       onPointerCancel={onPointerCancel}
@@ -57,15 +68,55 @@ function CardNodeBase({
         background: '#fff',
         borderRadius: 14,
         padding: '14px 15px',
-        border: selected ? `2px solid ${color}` : '1px solid rgba(20,20,30,.09)',
-        boxShadow: selected
-          ? `0 10px 30px ${color}33`
-          : '0 1px 2px rgba(0,0,0,.04), 0 6px 18px rgba(0,0,0,.06)',
+        border: linkTarget
+          ? '2px solid #9775fa'
+          : selected
+            ? `2px solid ${color}`
+            : '1px solid rgba(20,20,30,.09)',
+        boxShadow: linkTarget
+          ? '0 10px 30px rgba(151,117,250,.35)'
+          : selected
+            ? `0 10px 30px ${color}33`
+            : '0 1px 2px rgba(0,0,0,.04), 0 6px 18px rgba(0,0,0,.06)',
         cursor: 'grab',
         touchAction: 'none',
         userSelect: 'none',
       }}
     >
+      {onLinkStart && (
+        <div
+          className={`link-handle${linkSource ? ' is-active' : ''}`}
+          title="拖到另一張卡片建立連結"
+          aria-label="建立連結"
+          data-link-handle={card.id}
+          onPointerDown={(e) => onLinkStart(e, card.id)}
+          style={{
+            position: 'absolute',
+            // sits exactly where the bezier will leave the card, so the line
+            // appears to come out of the dot you grabbed
+            left: CARD_W - 13,
+            top: CARD_CY - 13,
+            width: 26,
+            height: 26,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'crosshair',
+            touchAction: 'none',
+          }}
+        >
+          <span
+            style={{
+              width: 13,
+              height: 13,
+              borderRadius: '50%',
+              background: '#fff',
+              border: '2px solid #9775fa',
+              boxShadow: '0 1px 4px rgba(0,0,0,.18)',
+            }}
+          />
+        </div>
+      )}
       {/* header row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 8 }}>
         <TypeDot type={card.type} />

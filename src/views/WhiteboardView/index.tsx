@@ -56,7 +56,16 @@ type Gesture =
       moved: boolean;
     }
   | { kind: 'pinch'; startDist: number; startScale: number }
+  | { kind: 'link'; pointerId: number; fromId: string }
   | null;
+
+/** which card sits under a screen point, if any (hit-tests the real DOM boxes,
+ *  so it stays correct whatever height a card's clamped body gives it) */
+function cardIdAt(clientX: number, clientY: number): string | null {
+  const el = document.elementFromPoint(clientX, clientY);
+  const node = el instanceof Element ? el.closest<HTMLElement>('[data-card-id]') : null;
+  return node?.dataset.cardId ?? null;
+}
 
 /** which right-click / long-press menu is open, and where */
 type MenuState =
@@ -109,6 +118,22 @@ export default function WhiteboardView() {
   const longPressRef = useRef<number | null>(null);
   const [grabbing, setGrabbing] = useState(false);
   const [menu, setMenu] = useState<MenuState | null>(null);
+  // in-flight drag-to-connect (state, not a ref: the preview line must re-render)
+  const [linking, setLinking] = useState<{
+    fromId: string;
+    to: { x: number; y: number };
+    targetId: string | null;
+  } | null>(null);
+
+  /** screen point → board (world) coordinates, undoing pan + zoom */
+  const toWorld = useCallback((clientX: number, clientY: number) => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    const { pan: p, scale: s } = useStore.getState();
+    return {
+      x: (clientX - (rect?.left ?? 0) - p.x) / s,
+      y: (clientY - (rect?.top ?? 0) - p.y) / s,
+    };
+  }, []);
 
   // ---- touch long-press (opens the context menu where there is no right-click)
 
@@ -132,17 +157,10 @@ export default function WhiteboardView() {
           setMenu({ kind: 'card', cardId, x: clientX, y: clientY });
           return;
         }
-        const el = canvasRef.current;
-        const { pan: p, scale: s } = useStore.getState();
-        let world: { x: number; y: number } | undefined;
-        if (el) {
-          const rect = el.getBoundingClientRect();
-          world = { x: (clientX - rect.left - p.x) / s, y: (clientY - rect.top - p.y) / s };
-        }
-        setMenu({ kind: 'canvas', x: clientX, y: clientY, world });
+        setMenu({ kind: 'canvas', x: clientX, y: clientY, world: toWorld(clientX, clientY) });
       }, 480);
     },
-    [clearLongPress],
+    [clearLongPress, toWorld],
   );
 
   // ---- gesture helpers -------------------------------------------------
@@ -226,6 +244,41 @@ export default function WhiteboardView() {
     [startPinch, startLongPress],
   );
 
+  /**
+   * Press on a card's link handle → start dragging a connection.
+   *
+   * Capture goes on the CANVAS, not the handle: with capture on the handle,
+   * every later move/up would retarget into CardNode, whose own pointerup
+   * stops propagation and would swallow the drop. Capturing on the canvas
+   * keeps the whole gesture in this one state machine.
+   */
+  const onLinkStart = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>, cardId: string) => {
+      if (e.button !== 0) return;
+      e.stopPropagation(); // must not also start a card drag
+      e.preventDefault();
+      clearLongPress();
+      try {
+        canvasRef.current?.setPointerCapture(e.pointerId);
+      } catch {
+        /* capture is best-effort */
+      }
+      gestureRef.current = { kind: 'link', pointerId: e.pointerId, fromId: cardId };
+      setLinking({ fromId: cardId, to: toWorld(e.clientX, e.clientY), targetId: null });
+    },
+    [clearLongPress, toWorld],
+  );
+
+  /** finish a link drag: connect when dropped on another card, otherwise cancel */
+  const endLink = useCallback((g: { fromId: string }, clientX: number, clientY: number) => {
+    const target = cardIdAt(clientX, clientY);
+    // addLink already ignores self-links and de-dupes, but checking here keeps
+    // a drop back onto the source from counting as a real action
+    if (target && target !== g.fromId) useStore.getState().addLink(g.fromId, target);
+    gestureRef.current = null;
+    setLinking(null);
+  }, []);
+
   const onCardPointerUp = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>, cardId: string) => {
       e.stopPropagation();
@@ -279,6 +332,9 @@ export default function WhiteboardView() {
     (e: ReactPointerEvent<HTMLDivElement>) => {
       // ignore non-primary buttons (right/middle) — those drive the context menu
       if (e.button !== 0) return;
+      // a link drag owns the canvas until it ends; a second finger must not
+      // turn it into a pan or pinch
+      if (gestureRef.current?.kind === 'link') return;
       // cards stopPropagation, so anything reaching here is the background
       pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
       try {
@@ -312,6 +368,17 @@ export default function WhiteboardView() {
     }
     const g = gestureRef.current;
     if (!g) return;
+
+    if (g.kind === 'link') {
+      if (g.pointerId !== e.pointerId) return;
+      const over = cardIdAt(e.clientX, e.clientY);
+      setLinking({
+        fromId: g.fromId,
+        to: toWorld(e.clientX, e.clientY),
+        targetId: over && over !== g.fromId ? over : null,
+      });
+      return;
+    }
 
     if (g.kind === 'pinch') {
       const pts = [...pointersRef.current.values()];
@@ -358,13 +425,18 @@ export default function WhiteboardView() {
       clearLongPress(); // a real pan cancels the pending long-press menu
     }
     useStore.getState().setPan({ x: g.ox + dx, y: g.oy + dy });
-  }, [clearLongPress]);
+  }, [clearLongPress, toWorld]);
 
   const endGesture = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
       clearLongPress();
-      releasePointer(pointersRef.current, e);
       const g = gestureRef.current;
+      if (g?.kind === 'link') {
+        // don't releasePointer(): a link drag never entered pointersRef
+        if (g.pointerId === e.pointerId) endLink(g, e.clientX, e.clientY);
+        return;
+      }
+      releasePointer(pointersRef.current, e);
       if (!g) return;
       if (g.kind === 'pinch') {
         settlePinchEnd();
@@ -383,15 +455,23 @@ export default function WhiteboardView() {
         setGrabbing(false);
       }
     },
-    [settlePinchEnd, clearLongPress],
+    [settlePinchEnd, clearLongPress, endLink],
   );
 
   // pointercancel on the canvas: pure cleanup, no tap actions (no closeDetail)
   const onPointerCancel = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
       clearLongPress();
-      releasePointer(pointersRef.current, e);
       const g = gestureRef.current;
+      if (g?.kind === 'link') {
+        // cancelled, not dropped — abandon without creating a link
+        if (g.pointerId === e.pointerId) {
+          gestureRef.current = null;
+          setLinking(null);
+        }
+        return;
+      }
+      releasePointer(pointersRef.current, e);
       if (!g) return;
       if (g.kind === 'pinch') {
         settlePinchEnd();
@@ -451,17 +531,13 @@ export default function WhiteboardView() {
 
   // ---- context menu (right-click on desktop, long-press on touch) --------
 
-  const onCanvasContextMenu = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    const el = canvasRef.current;
-    const { pan: p, scale: s } = useStore.getState();
-    let world: { x: number; y: number } | undefined;
-    if (el) {
-      const rect = el.getBoundingClientRect();
-      world = { x: (e.clientX - rect.left - p.x) / s, y: (e.clientY - rect.top - p.y) / s };
-    }
-    setMenu({ kind: 'canvas', x: e.clientX, y: e.clientY, world });
-  }, []);
+  const onCanvasContextMenu = useCallback(
+    (e: ReactMouseEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      setMenu({ kind: 'canvas', x: e.clientX, y: e.clientY, world: toWorld(e.clientX, e.clientY) });
+    },
+    [toWorld],
+  );
 
   // CardNode already did preventDefault + stopPropagation before calling this
   const onCardContextMenu = useCallback((e: ReactMouseEvent<HTMLDivElement>, cardId: string) => {
@@ -606,7 +682,12 @@ export default function WhiteboardView() {
       >
         {hasCards && (
           <div style={worldStyle}>
-            <LinksLayer placed={placed} links={boardLinks} onLinkContextMenu={onLinkContextMenu} />
+            <LinksLayer
+              placed={placed}
+              links={boardLinks}
+              onLinkContextMenu={onLinkContextMenu}
+              pending={linking ? { fromId: linking.fromId, to: linking.to } : null}
+            />
             {placed.map(({ card, x, y }) => (
               <CardNode
                 key={card.id}
@@ -619,6 +700,9 @@ export default function WhiteboardView() {
                 onPointerUp={onCardPointerUp}
                 onPointerCancel={onCardPointerCancel}
                 onContextMenu={onCardContextMenu}
+                onLinkStart={onLinkStart}
+                linkSource={linking?.fromId === card.id}
+                linkTarget={linking?.targetId === card.id}
               />
             ))}
           </div>

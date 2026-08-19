@@ -183,6 +183,26 @@ textarea {
   -webkit-user-select: none;
 }
 
+/* whiteboard: the dot on a card's right edge you drag to another card to link them.
+   Hidden until the card is hovered so the board stays calm; touch devices have no
+   hover, so there it stays faintly visible to remain discoverable. */
+.link-handle {
+  opacity: 0;
+  transition: opacity 0.12s, transform 0.12s;
+}
+.card-node:hover .link-handle,
+.link-handle.is-active {
+  opacity: 1;
+}
+.link-handle:hover {
+  transform: scale(1.15);
+}
+@media (hover: none) {
+  .link-handle {
+    opacity: 0.5;
+  }
+}
+
 /* icon-only button (consistent hit area + hover) */
 .icon-btn {
   display: inline-flex;
