@@ -105,6 +105,14 @@ updated: 2026-06-27T09:00:00Z
 目前 AI（搜尋、連結建議、日記抽卡、自動分類）使用**本機關鍵字／標籤比對**，離線可用、零成本。
 程式以 `src/ai/provider.ts` 介面層設計，之後可在 `src/ai/claude.ts` 接上 **Claude API**（瀏覽器直連、使用者自備 Anthropic API key、`dangerouslyAllowBrowser`、模型 `claude-sonnet-4-6` / `claude-haiku-4-5`），即為 drop-in 替換，UI 不需更動。設定頁已預留 API key 欄位。
 
+## 語音草稿收件匣（iPhone，可選）
+
+用一個 iPhone 捷徑對著手機說話，轉錄結果直接推成資料 repo 裡 `inbox/` 的一則草稿，之後交給 AI agent 打標籤、整理，值得留的再升級成正式卡片。純捷徑實作，不需要自架任何服務。
+
+完整設定步驟（token 權限、捷徑動作、agent prompt）見 **[docs/VOICE-INBOX.md](docs/VOICE-INBOX.md)**。
+
+> ⚠️ `inbox/` 刻意**不在** app 的管理範圍內，app 從不讀寫它。別把 `inbox/` 加進 `OWNED_PREFIXES`——同步會把「app 擁有但本機沒有」的檔案刪掉，草稿會被靜默清空。
+
 ## 用 AI 自動整理筆記（可選）
 
 資料 repo 就是一般的 git 檔案（Markdown + JSON），所以任何能讀寫 git 的 AI agent 都可以定時當「整理助手」：產生摘要報告、建議卡片連結、把日記抽成卡片。以下兩種做法擇一即可。
