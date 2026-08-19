@@ -49,8 +49,12 @@ function sameMap(a: FileMap, b: FileMap): boolean {
 
 const OWNED_PREFIXES = ['cards/', 'projects/', 'diary/', 'boards/'];
 /** Files this app manages. Anything else in the repo (README, LICENSE, assets,
- *  other docs) is left completely untouched — never merged, never deleted. */
-function isOwnedPath(path: string): boolean {
+ *  other docs) is left completely untouched — never merged, never deleted.
+ *
+ *  `inbox/` is deliberately foreign: the iPhone 語音筆記捷徑直接寫檔進去，
+ *  app 從來不解析也不序列化那些草稿。把它列進 OWNED_PREFIXES 會讓
+ *  buildChanges 認定「遠端有、本機沒有」而整批刪除——見 tests/unit/ownedPaths.test.ts。 */
+export function isOwnedPath(path: string): boolean {
   return (
     path === 'cardnote.json' ||
     path === 'links.ndjson' ||
