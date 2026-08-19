@@ -90,7 +90,8 @@ store 重要 actions：卡片 `addCard/updateCard/deleteCard`；白板 `selectBo
 7. ✅ **多分頁互踩防護（2026-08-17）**：同一瀏覽器開多個分頁時，兩邊各自的記憶體 store 會對同一份 IndexedDB baseline 做三方合併而互相回退。`src/lib/tabLock.ts` 用 **Web Locks**（`card-note-primary-tab`，callback 回傳永不 resolve 的 promise 以持有到分頁關閉）選出唯一作用中分頁；其餘分頁顯示「已在另一個分頁開啟」待命畫面，**不 bootstrap、不寫 IndexedDB、不同步**，等鎖釋放後自動走同一段啟動流程接手。不支援 Web Locks 的環境退化成取得鎖（行為同以前）。同時修掉 StrictMode 下啟動 effect 跑兩次造成的重複 `startAutoSync`（重複訂閱 + 雙計時器）。測試 43 unit + 2 e2e（含雙分頁待命/接手）。**iOS 版不需要對應改動**（單一 app 實例）。
 8. ✅ **語音草稿收件匣（2026-08-19）**：iPhone 捷徑（內建聽寫）→ GitHub Contents API → `inbox/<yyyy-MM-dd-HHmmss>.md`，一則一檔故不需讀後寫、也不與 routine 的 commit 競態。草稿格式為 YAML frontmatter（`created`/`source`/`processed`/`tags`）+ 內文。**設計上 `inbox/` 刻意不屬於 app**：`buildChanges` 會刪除「app 擁有但本機序列化結果沒有」的遠端檔案，把 `inbox/` 加進 `OWNED_PREFIXES` 會靜默刪光所有草稿——`tests/unit/ownedPaths.test.ts` 守這條線。API 請求形狀已對 card-note-sync-test 實測（201 建立、往返 UTF-8 中文無損、測試檔已清除）。完整設定見 `docs/VOICE-INBOX.md`，含要加進 Claude routine 的標籤化 prompt。**待辦**：實際在手機上把捷徑建起來並跑通；routine prompt 尚未貼進去。
 9. **web 端 AI live 呼叫仍未驗**（見第 2 項）。離線層已補 `tests/unit/claudeProvider.test.ts`（攔截 fetch 斷言請求形狀），並修掉 `max_tokens` 截斷會丟原始 JSON 語法錯誤的問題、把 reasoning 額度提到 16000（adaptive thinking 與回應共用 max_tokens）。live 腳本見 scratchpad（會被清），必要時重建。
-10. 其他可加：白板上拖曳建立連結、白板排序/封存、圖片/附件處理、AI 建議連結持久化選項、web/iOS 模型候選序列升級（如加入 claude-opus-5，**必須兩端同步改**）。
+10. ✅ **白板拖曳建立連結（2026-08-19）**：卡片右緣（`CARD_CY` 高度，即貝茲線離開卡片的位置）有一個連結圓點，hover 時浮現、觸控裝置常駐半透明；按住拖到另一張卡放開即建立實線連結。**pointer capture 設在畫布而非圓點**——設在圓點的話後續 move/up 會 retarget 進 `CardNode`，而它的 `onPointerUp` 會 `stopPropagation` 吃掉放開事件；設在畫布可讓整段手勢留在同一個狀態機。命中測試用 `document.elementFromPoint` + `data-card-id`（卡片高度會隨內文變動，不能用固定盒模型算）。預覽線 `pointerEvents: 'none'`，否則會擋住命中測試。`addLink` 本身已處理自連/去重，且會把 AI 建議升級成實線。連線 path 加了 `data-link`（`linkKey` 正規化）與 `data-link-type` 供測試斷言。5 個 e2e（建立/預覽/去重/不誤移卡片/AI 升級）。**iOS 版尚未移植此互動**。
+11. 其他可加：白板排序/封存、圖片/附件處理、AI 建議連結持久化選項、web/iOS 模型候選序列升級（如加入 claude-opus-5，**必須兩端同步改**）。
 
 ## 資料生態系（2026-08-09 之後的營運狀態）
 

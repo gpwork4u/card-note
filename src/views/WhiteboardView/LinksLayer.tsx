@@ -1,6 +1,7 @@
 import { useMemo, type MouseEvent as ReactMouseEvent } from 'react';
 import type { Card, Link } from '@/types';
-import { cardCenter, linkPath } from '@/lib/bezier';
+import { cardCenter, linkPath, type Point } from '@/lib/bezier';
+import { linkKey } from '@/lib/derive';
 
 interface PlacedItem {
   card: Card;
@@ -15,6 +16,8 @@ interface LinksLayerProps {
   links: Link[];
   /** right-click on a link → report which link was hit */
   onLinkContextMenu?: (e: ReactMouseEvent<SVGPathElement>, link: { a: string; b: string }) => void;
+  /** in-flight drag-to-connect: preview line from a card to the pointer (world coords) */
+  pending?: { fromId: string; to: Point } | null;
 }
 
 interface LinkStyle {
@@ -32,7 +35,7 @@ const AI: LinkStyle = { stroke: '#9775fa', width: 1.6, dash: '6 6', opacity: 0.9
  * by a fixed margin so links that bow outside the card bounds aren't clipped.
  * Endpoints come from the board placements, not the cards themselves.
  */
-export function LinksLayer({ placed, links, onLinkContextMenu }: LinksLayerProps) {
+export function LinksLayer({ placed, links, onLinkContextMenu, pending }: LinksLayerProps) {
   const pos = useMemo(() => {
     const m = new Map<string, { x: number; y: number }>();
     for (const p of placed) m.set(p.card.id, { x: p.x, y: p.y });
@@ -80,6 +83,9 @@ export function LinksLayer({ placed, links, onLinkContextMenu }: LinksLayerProps
                 onContextMenu={onCtx}
               />
               <path
+                // canonical (order-independent) identity of this link
+                data-link={linkKey(link.a, link.b)}
+                data-link-type={link.type}
                 d={d}
                 fill="none"
                 stroke={s.stroke}
@@ -92,6 +98,25 @@ export function LinksLayer({ placed, links, onLinkContextMenu }: LinksLayerProps
             </g>
           );
         })}
+
+        {/* drag-to-connect preview. pointerEvents must stay off: the drag
+            hit-tests with elementFromPoint, and a live path under the cursor
+            would mask the card being aimed at. */}
+        {pending &&
+          (() => {
+            const from = pos.get(pending.fromId);
+            if (!from) return null;
+            return (
+              <path
+                d={linkPath(cardCenter(from), pending.to)}
+                fill="none"
+                stroke={AI.stroke}
+                strokeWidth={2}
+                strokeDasharray="5 5"
+                style={{ pointerEvents: 'none' }}
+              />
+            );
+          })()}
       </g>
     </svg>
   );
