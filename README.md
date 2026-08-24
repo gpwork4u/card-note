@@ -116,11 +116,16 @@ Claude provider（`src/ai/claude.ts`）的幾個實作重點：
 
 > Claude provider 已有離線測試覆蓋請求形狀與回應處理（`tests/unit/claudeProvider.test.ts`），但**尚未用真實 API key 跑過完整的 live 呼叫**。
 
-## 語音草稿收件匣（iPhone，可選）
+## 收件匣：從 iPhone 隨手丟東西進來（可選）
 
-用一個 iPhone 捷徑對著手機說話，轉錄結果直接推成資料 repo 裡 `inbox/` 的一則草稿，之後交給 AI agent 打標籤、整理，值得留的再升級成正式卡片。純捷徑實作，不需要自架任何服務。
+兩個 iPhone 捷徑，收進資料 repo 的同一個暫存區 `inbox/`：
 
-完整設定步驟（token 權限、捷徑動作、agent prompt）見 **[docs/VOICE-INBOX.md](docs/VOICE-INBOX.md)**。
+- **語音筆記**：按動作按鈕（或喊 Siri）講一段話，內建聽寫轉錄後直接推上去。
+- **分享連結**：在 Safari 或任何 app 點分享 → 選捷徑 → 順手打一句「為什麼想存這條」（可留空）。
+
+草稿之後交給 AI agent 打標籤、整理，值得留的再升級成正式卡片。純捷徑實作，不需要自架任何服務。
+
+完整設定步驟（token 權限、兩個捷徑的逐步動作、agent prompt）見 **[docs/INBOX.md](docs/INBOX.md)**。
 
 > ⚠️ `inbox/` 刻意**不在** app 的管理範圍內，app 從不讀寫它。別把 `inbox/` 加進 `OWNED_PREFIXES`——同步會把「app 擁有但本機沒有」的檔案刪掉，草稿會被靜默清空。
 
