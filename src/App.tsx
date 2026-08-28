@@ -17,6 +17,7 @@ import { ImportDialog } from '@/components/panels/ImportDialog';
 import { ConflictResolver } from '@/components/panels/ConflictResolver';
 import { NewProjectModal } from '@/components/panels/NewProjectModal';
 import { AddToBoardModal } from '@/components/panels/AddToBoardModal';
+import { BoardManagerModal } from '@/components/panels/BoardManagerModal';
 
 function Splash() {
   return (
@@ -91,6 +92,7 @@ export default function App() {
       <ConflictResolver />
       <NewProjectModal />
       <AddToBoardModal />
+      <BoardManagerModal />
     </>
   );
 }

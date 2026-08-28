@@ -47,5 +47,14 @@ export function parseAll(files: FileMap): AppData {
   }
   // newest diary first (matches the UI), cards keep insertion order
   data.diary.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  // Boards render in array order, so it must not depend on how the file map was
+  // enumerated: sort by the persisted `order`, with boards that have none (never
+  // reordered) after them, and id as the deterministic tie-breaker.
+  data.boards.sort((a, b) => {
+    const ao = a.order ?? Number.POSITIVE_INFINITY;
+    const bo = b.order ?? Number.POSITIVE_INFINITY;
+    if (ao !== bo) return ao - bo;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
   return data;
 }

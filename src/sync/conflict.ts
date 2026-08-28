@@ -67,6 +67,16 @@ function mergeScalar<T>(base: T, ours: T, theirs: T): { value: T } | null {
   return null;
 }
 
+/**
+ * 外觀狀態（卡片座標、白板順序／封存）的三方合併：單側改就採該側，
+ * 兩側都改則採本機。這類欄位不值得讓使用者面對衝突視窗。
+ */
+function mergeAppearance<T>(base: T, ours: T, theirs: T): T {
+  if (ours === theirs) return ours;
+  if (ours === base) return theirs;
+  return ours;
+}
+
 /** three-way 集合成員資格：一個成員只有在「恰好一側相對 base 移除它」時才消失 */
 function memberPresent(inB: boolean, inO: boolean, inT: boolean): boolean {
   return inO === inT ? inO : inO !== inB ? inO : inT;
@@ -110,7 +120,8 @@ export function mergeCardFiles(base: string | undefined, ours: string, theirs: s
 /**
  * 白板 placement 級三方合併：A 拖卡片 1、B 拖卡片 2 不再是整檔衝突。
  * 成員資格照集合規則（單側移除才消失）；同一張卡兩側拖到不同位置時
- * 採 ours（座標是外觀狀態，不值得跳衝突視窗）。名稱兩側改成不同值 → null。
+ * 採 ours（座標是外觀狀態，不值得跳衝突視窗）——白板順序 order 與封存旗標
+ * archived 同理。名稱兩側改成不同值 → null。
  */
 export function mergeBoardFiles(base: string | undefined, ours: string, theirs: string): string | null {
   const id = 'merge-tmp';
@@ -141,7 +152,13 @@ export function mergeBoardFiles(base: string | undefined, ours: string, theirs: 
       return (op ?? tp)!;
     });
 
-  return serializeBoard({ id: o.id, name: name.value!, placements });
+  return serializeBoard({
+    id: o.id,
+    name: name.value!,
+    order: mergeAppearance(b?.order, o.order, t.order),
+    archived: mergeAppearance(b?.archived, o.archived, t.archived),
+    placements,
+  });
 }
 
 /**
@@ -215,7 +232,12 @@ function duplicate(path: string, theirsContent: string): { path: string; content
     if (kind === 'board') {
       const board = parseBoard(theirsContent, boardIdFromPath(path));
       const id = shortId('b');
-      return { path: boardPath(id), content: serializeBoard({ ...board, id, name: `${board.name} (衝突)` }) };
+      // never archived: a keep-both duplicate must be visible in the tab row,
+      // otherwise the rescued copy silently lands in the archive drawer
+      return {
+        path: boardPath(id),
+        content: serializeBoard({ ...board, id, name: `${board.name} (衝突)`, archived: false }),
+      };
     }
     if (kind === 'diary') {
       const date = diaryDateFromPath(path);

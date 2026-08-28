@@ -52,6 +52,7 @@ interface Store {
   importOpen: boolean;
   conflictOpen: boolean;
   addToBoardOpen: boolean;
+  boardManagerOpen: boolean;
   newProjOpen: boolean;
   newProjName: string;
   newProjSel: string[];
@@ -109,8 +110,12 @@ interface Store {
     input: { title: string; type: CardType; body?: string },
     pos?: { x: number; y: number },
   ) => string;
+  reorderBoards: (orderedIds: string[]) => void;
+  setBoardArchived: (id: string, archived: boolean) => void;
   openAddToBoard: () => void;
   closeAddToBoard: () => void;
+  openBoardManager: () => void;
+  closeBoardManager: () => void;
   migrateDefaultBoard: () => void;
 
   // ---- cards ----
@@ -160,6 +165,11 @@ function placeCascade(index: number, base = { x: 160, y: 140 }): { x: number; y:
   return { x: base.x + (index % 5) * 36 + Math.floor(index / 5) * 240, y: base.y + (index % 5) * 32 };
 }
 
+/** the board the whiteboard should fall back to: first non-archived, else none */
+function firstVisibleBoardId(boards: Board[]): string | null {
+  return boards.find((b) => !b.archived)?.id ?? null;
+}
+
 export const useStore = create<Store>((set, get) => {
   const seed = seedData();
   return {
@@ -183,6 +193,7 @@ export const useStore = create<Store>((set, get) => {
     importOpen: false,
     conflictOpen: false,
     addToBoardOpen: false,
+    boardManagerOpen: false,
     newProjOpen: false,
     newProjName: '',
     newProjSel: [],
@@ -241,7 +252,16 @@ export const useStore = create<Store>((set, get) => {
     selectBoard: (id) => set({ activeBoardId: id }),
     createBoard: (name) => {
       const id = shortId('b');
-      const board: Board = { id, name: name?.trim() || `白板 ${get().boards.length + 1}`, placements: [] };
+      const existing = get().boards;
+      // give the new board an explicit order so its position survives a sync
+      // round-trip (ids are random, so id tie-breaking would reshuffle it)
+      const maxOrder = existing.reduce((m, b) => (typeof b.order === 'number' ? Math.max(m, b.order) : m), -1);
+      const board: Board = {
+        id,
+        name: name?.trim() || `白板 ${existing.length + 1}`,
+        placements: [],
+        order: Math.max(maxOrder + 1, existing.length),
+      };
       set((s) => ({ boards: [...s.boards, board], activeBoardId: id }));
       return id;
     },
@@ -252,7 +272,35 @@ export const useStore = create<Store>((set, get) => {
         const boards = s.boards.filter((b) => b.id !== id);
         return {
           boards,
-          activeBoardId: s.activeBoardId === id ? boards[0]?.id ?? null : s.activeBoardId,
+          activeBoardId: s.activeBoardId === id ? firstVisibleBoardId(boards) : s.activeBoardId,
+        };
+      }),
+    reorderBoards: (orderedIds) =>
+      set((s) => {
+        const byId = new Map(s.boards.map((b) => [b.id, b]));
+        const ranked: Board[] = [];
+        for (const id of orderedIds) {
+          const b = byId.get(id);
+          if (b && !ranked.includes(b)) ranked.push(b);
+        }
+        // anything the caller left out keeps its relative position, at the end
+        for (const b of s.boards) if (!ranked.includes(b)) ranked.push(b);
+        return { boards: ranked.map((b, i) => (b.order === i ? b : { ...b, order: i })) };
+      }),
+    setBoardArchived: (id, archived) =>
+      set((s) => {
+        const boards: Board[] = s.boards.map((b) => {
+          if (b.id !== id) return b;
+          if (archived) return { ...b, archived: true };
+          // drop the key rather than storing false, so the file stays unarchived-clean
+          const { archived: _dropped, ...rest } = b;
+          return rest;
+        });
+        // never leave the whiteboard pointing at a board the tab row can't show
+        const active = boards.find((b) => b.id === s.activeBoardId);
+        return {
+          boards,
+          activeBoardId: active && !active.archived ? s.activeBoardId : firstVisibleBoardId(boards),
         };
       }),
     addCardToBoard: (boardId, cardId, pos) =>
@@ -301,6 +349,8 @@ export const useStore = create<Store>((set, get) => {
     },
     openAddToBoard: () => set({ addToBoardOpen: true }),
     closeAddToBoard: () => set({ addToBoardOpen: false }),
+    openBoardManager: () => set({ boardManagerOpen: true }),
+    closeBoardManager: () => set({ boardManagerOpen: false }),
     migrateDefaultBoard: () =>
       set((s) => {
         if (s.boards.length > 0) return s;
@@ -507,6 +557,8 @@ export const useStore = create<Store>((set, get) => {
     hydrate: (data) =>
       set((s) => {
         const boards = data.boards ?? s.boards;
+        // the board we were on may have been deleted OR archived on another device
+        const current = boards.find((b) => b.id === s.activeBoardId);
         return {
           cards: data.cards ?? s.cards,
           links: data.links ?? s.links,
@@ -517,10 +569,7 @@ export const useStore = create<Store>((set, get) => {
             data.activeProjectId !== undefined
               ? data.activeProjectId
               : (data.projects?.[0]?.id ?? s.activeProjectId),
-          activeBoardId:
-            s.activeBoardId && boards.some((b) => b.id === s.activeBoardId)
-              ? s.activeBoardId
-              : (boards[0]?.id ?? null),
+          activeBoardId: current && !current.archived ? s.activeBoardId : firstVisibleBoardId(boards),
           hydrated: true,
         };
       }),
@@ -545,7 +594,7 @@ export const useStore = create<Store>((set, get) => {
           projects: mergedProjects,
           diary: mergedDiary,
           boards: mergedBoards,
-          activeBoardId: s.activeBoardId ?? mergedBoards[0]?.id ?? null,
+          activeBoardId: s.activeBoardId ?? firstVisibleBoardId(mergedBoards),
         };
       }),
     getData: () => {

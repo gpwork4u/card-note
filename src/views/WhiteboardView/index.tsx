@@ -104,6 +104,9 @@ export default function WhiteboardView() {
   const createBoard = useStore((s) => s.createBoard);
   const renameBoard = useStore((s) => s.renameBoard);
   const deleteBoard = useStore((s) => s.deleteBoard);
+  const reorderBoards = useStore((s) => s.reorderBoards);
+  const setBoardArchived = useStore((s) => s.setBoardArchived);
+  const openBoardManager = useStore((s) => s.openBoardManager);
   const openAddToBoard = useStore((s) => s.openAddToBoard);
 
   // resolve the active board into the cards it places + the links between them
@@ -592,7 +595,9 @@ export default function WhiteboardView() {
         onClick: () => get().updateCard(cardId, { type: t }),
       }));
 
-      const otherBoards = boards.filter((b) => !b.placements.some((p) => p.cardId === cardId));
+      const otherBoards = boards.filter(
+        (b) => !b.archived && !b.placements.some((p) => p.cardId === cardId),
+      );
       const copySub: MenuItem[] = otherBoards.length
         ? otherBoards.map((b) => ({ label: b.name, onClick: () => get().addCardToBoard(b.id, cardId) }))
         : [{ label: '（已在所有白板）', disabled: true }];
@@ -667,6 +672,9 @@ export default function WhiteboardView() {
         onNew={() => createBoard()}
         onRename={renameBoard}
         onDelete={deleteBoard}
+        onReorder={reorderBoards}
+        onArchive={(id) => setBoardArchived(id, true)}
+        onManage={openBoardManager}
       />
 
       <div
