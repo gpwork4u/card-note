@@ -252,17 +252,21 @@ export const useStore = create<Store>((set, get) => {
     selectBoard: (id) => set({ activeBoardId: id }),
     createBoard: (name) => {
       const id = shortId('b');
-      const existing = get().boards;
-      // give the new board an explicit order so its position survives a sync
-      // round-trip (ids are random, so id tie-breaking would reshuffle it)
-      const maxOrder = existing.reduce((m, b) => (typeof b.order === 'number' ? Math.max(m, b.order) : m), -1);
-      const board: Board = {
-        id,
-        name: name?.trim() || `白板 ${existing.length + 1}`,
-        placements: [],
-        order: Math.max(maxOrder + 1, existing.length),
-      };
-      set((s) => ({ boards: [...s.boards, board], activeBoardId: id }));
+      // The new board needs an explicit order, or a sync round-trip would
+      // reshuffle it (ids are random and parseAll falls back to id order).
+      // But an explicit order also sorts BEFORE every board that has none, so
+      // giving one board an order while others have none would jump the new
+      // board to the front. Normalise the whole list instead.
+      set((s) => {
+        const normalized = s.boards.map((b, i) => (b.order === i ? b : { ...b, order: i }));
+        const board: Board = {
+          id,
+          name: name?.trim() || `白板 ${s.boards.length + 1}`,
+          placements: [],
+          order: normalized.length,
+        };
+        return { boards: [...normalized, board], activeBoardId: id };
+      });
       return id;
     },
     renameBoard: (id, name) =>

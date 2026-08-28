@@ -73,11 +73,20 @@ describe('setBoardArchived', () => {
 });
 
 describe('createBoard / deleteBoard 與封存的互動', () => {
-  it('新白板拿到比現有最大 order 更大的 order（同步往返後位置才不會跑掉）', () => {
+  it('新白板排在最後，順序重新正規化成連續名次（同步往返後位置才不會跑掉）', () => {
     setBoards([board('b1', { order: 0 }), board('b2', { order: 5 })]);
     const id = useStore.getState().createBoard('新白板');
-    const created = useStore.getState().boards.find((b) => b.id === id)!;
-    expect(created.order).toBe(6);
+    expect(ids()).toEqual(['b1', 'b2', id]);
+    expect(orders()).toEqual([0, 1, 2]);
+  });
+
+  it('既有白板都還沒有 order 時，一併正規化，新白板不會跳到最前面', () => {
+    // 只給新白板 order 的話，parseAll 會把「有 order」排在「沒有 order」之前，
+    // 重載後剛建立的白板就跑到第一個去了。
+    setBoards([board('b1'), board('b2')]);
+    const id = useStore.getState().createBoard('新白板');
+    expect(orders()).toEqual([0, 1, 2]);
+    expect(ids()).toEqual(['b1', 'b2', id]);
   });
 
   it('刪除目前白板時只會落到未封存的白板上', () => {

@@ -60,6 +60,19 @@ test('拖曳不會誤觸切換白板', async ({ page }) => {
   await expect(page.locator('[data-card-id="c1"]')).toBeVisible();
 });
 
+test('一步拖到目標後立刻放開，仍會套用最後一次移動', async ({ page }) => {
+  // 只有一次 move 事件、緊接著 pointerup：如果送出的順序是從 React state 讀的，
+  // 這裡就會提交「還沒套用最後一次移動」的舊順序。
+  const from = await centerOf(page, 'b2');
+  const to = await centerOf(page, 'b1');
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y);
+  await page.mouse.up();
+
+  await expect.poll(() => tabOrder(page)).toEqual(['b2', 'b1']);
+});
+
 test('右鍵封存白板後分頁消失，可從管理白板還原', async ({ page }) => {
   await tab(page, 'b2').click({ button: 'right' });
   await page.getByText('封存白板', { exact: true }).click();
