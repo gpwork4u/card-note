@@ -58,6 +58,9 @@ export function BoardTabs({
   const inputRef = useRef<HTMLInputElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ id: string; pointerId: number; startX: number; moved: boolean } | null>(null);
+  // the authoritative in-flight order. `drag` state only drives rendering and
+  // may still hold the previous value when pointerup lands right after a move.
+  const dragOrderRef = useRef<string[]>([]);
   // a press that turned into a drag must not also fire the tab's click
   const suppressClickRef = useRef(false);
 
@@ -116,20 +119,19 @@ export function BoardTabs({
     if (!d.moved) {
       if (Math.abs(e.clientX - d.startX) <= DRAG_THRESHOLD) return;
       d.moved = true;
-      setDrag({ id: d.id, order: visible.map((b) => b.id) });
+      dragOrderRef.current = visible.map((b) => b.id);
+      setDrag({ id: d.id, order: dragOrderRef.current });
     }
     const overId = tabIdAt(rowRef.current, e.clientX);
     if (!overId || overId === d.id) return;
-    setDrag((cur) => {
-      if (!cur) return cur;
-      const next = [...cur.order];
-      const from = next.indexOf(d.id);
-      const to = next.indexOf(overId);
-      if (from < 0 || to < 0 || from === to) return cur;
-      next.splice(from, 1);
-      next.splice(to, 0, d.id);
-      return { ...cur, order: next };
-    });
+    const next = [...dragOrderRef.current];
+    const from = next.indexOf(d.id);
+    const to = next.indexOf(overId);
+    if (from < 0 || to < 0 || from === to) return;
+    next.splice(from, 1);
+    next.splice(to, 0, d.id);
+    dragOrderRef.current = next;
+    setDrag({ id: d.id, order: next });
   };
 
   const endDrag = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -143,10 +145,13 @@ export function BoardTabs({
     }
     if (d.moved) {
       suppressClickRef.current = true;
-      const finalOrder = drag?.order ?? visible.map((b) => b.id);
+      // read the ref, not `drag`: a pointerup right after the last move would
+      // otherwise commit the order from before that move
+      const finalOrder = dragOrderRef.current.length ? dragOrderRef.current : visible.map((b) => b.id);
       // archived boards keep their relative position after the visible ones
       onReorder([...finalOrder, ...boards.filter((b) => b.archived).map((b) => b.id)]);
     }
+    dragOrderRef.current = [];
     setDrag(null);
   };
 
@@ -154,6 +159,7 @@ export function BoardTabs({
     const d = dragRef.current;
     if (!d || d.pointerId !== e.pointerId) return;
     dragRef.current = null;
+    dragOrderRef.current = [];
     setDrag(null);
   };
 

@@ -44,6 +44,26 @@ describe('board order/archived 序列化', () => {
     expect(b.archived).toBeUndefined();
   });
 
+  it('超出安全整數範圍的 order 一律忽略', () => {
+    // JSON.parse 會把 9007199254740993 靜默變成 ...992，再序列化就等於改寫了
+    // 一個使用者沒動過的白板檔；iOS 的 64-bit Int 又不會用同樣方式截斷。
+    const b = parseBoard('{"id":"b1","name":"n","order":9007199254740993,"placements":[]}', 'fb');
+    expect(b.order).toBeUndefined();
+    expect(serializeBoard({ ...base, order: Number.MAX_SAFE_INTEGER + 2 })).not.toContain('order');
+  });
+
+  it('MAX_SAFE_INTEGER 本身仍是合法的 order', () => {
+    const text = file({ order: Number.MAX_SAFE_INTEGER });
+    expect(parseBoard(text, 'fb').order).toBe(Number.MAX_SAFE_INTEGER);
+    expect(serializeBoard(parseBoard(text, 'fb'))).toBe(text);
+  });
+
+  it('無法寫成安全整數的座標退成 0（否則 iOS 會在 Int 轉換時 trap）', () => {
+    const b = parseBoard('{"id":"b1","name":"n","placements":[{"cardId":"c1","x":1e100,"y":5}]}', 'fb');
+    expect(b.placements[0]).toEqual({ cardId: 'c1', x: 0, y: 5 });
+    expect(serializeBoard({ ...base, placements: [{ cardId: 'c1', x: Infinity, y: 5 }] })).toContain('"x": 0');
+  });
+
   it('order 為小數時取整（欄位語意是名次）', () => {
     expect(parseBoard(file({ order: 2 }).replace('"order": 2', '"order": 2.6'), 'fb').order).toBe(3);
   });
@@ -101,6 +121,25 @@ describe('mergeBoardFiles 對 order/archived 的處理', () => {
 
   it('名稱兩側改成不同值仍是真衝突（order 不會把它吃掉）', () => {
     expect(mergeBoardFiles(file({}), file({ name: 'A', order: 1 }), file({ name: 'B' }))).toBeNull();
+  });
+});
+
+describe('兩台裝置各自排序後會收斂', () => {
+  // 「兩側都改採本機」看起來像會無限乒乓，但推送有 CAS：只有一端能先寫進去，
+  // 另一端合併後推送第二版，第一端下次同步時本機已等於 base，於是採遠端。
+  it('第二輪同步後兩端得到同一份 order', () => {
+    const old = file({ order: 0 });
+    const d1 = file({ order: 1 }); // 裝置一排序後先推上去
+    const d2 = file({ order: 2 }); // 裝置二在舊 base 上各自排序
+
+    // 裝置二拉到 d1，合併後推第二版
+    const round1 = mergeBoardFiles(old, d2, d1)!;
+    expect(parseBoard(round1, 'x').order).toBe(2);
+
+    // 裝置一再同步：本機還是 d1（沒再動過）＝ base，於是採遠端
+    const round2 = mergeBoardFiles(d1, d1, round1)!;
+    expect(parseBoard(round2, 'x').order).toBe(2);
+    expect(round2).toBe(round1);
   });
 });
 

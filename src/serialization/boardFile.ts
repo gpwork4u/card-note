@@ -18,11 +18,31 @@ function asPlacements(v: unknown): Placement[] {
     if (typeof cardId !== 'string' || !cardId) continue;
     out.push({
       cardId,
-      x: Number.isFinite(rec.x) ? Number(rec.x) : 0,
-      y: Number.isFinite(rec.y) ? Number(rec.y) : 0,
+      x: coord(rec.x),
+      y: coord(rec.y),
     });
   }
   return out;
+}
+
+/**
+ * A usable board order: a number that survives JSON round-tripping unchanged.
+ * Beyond MAX_SAFE_INTEGER, JSON.parse silently snaps to a different value, so
+ * re-serializing would rewrite a board file the user never touched — and iOS
+ * (64-bit Int) would not snap the same way, breaking byte-level parity.
+ */
+function isValidOrder(v: unknown): v is number {
+  return typeof v === 'number' && Number.isSafeInteger(Math.round(v));
+}
+
+/**
+ * A placement coordinate we can write out. Anything that doesn't round to a
+ * safe integer (±Infinity, 1e100, NaN) becomes 0: iOS rounds coordinates into
+ * a 64-bit Int, and a value past that range traps there rather than returning
+ * nil, so writing one out would crash the other client.
+ */
+function coord(v: unknown): number {
+  return typeof v === 'number' && Number.isSafeInteger(Math.round(v)) ? Number(v) : 0;
 }
 
 /**
@@ -35,9 +55,13 @@ export function serializeBoard(b: Board): string {
   const obj = {
     id: b.id,
     name: b.name,
-    ...(typeof b.order === 'number' && Number.isFinite(b.order) ? { order: Math.round(b.order) } : {}),
+    ...(isValidOrder(b.order) ? { order: Math.round(b.order) } : {}),
     ...(b.archived ? { archived: true } : {}),
-    placements: b.placements.map((p) => ({ cardId: p.cardId, x: Math.round(p.x), y: Math.round(p.y) })),
+    placements: b.placements.map((p) => ({
+      cardId: p.cardId,
+      x: Math.round(coord(p.x)),
+      y: Math.round(coord(p.y)),
+    })),
   };
   return JSON.stringify(obj, null, 2) + '\n';
 }
@@ -54,7 +78,7 @@ export function parseBoard(text: string, fallbackId: string): Board {
     name: typeof raw.name === 'string' ? raw.name : '未命名白板',
     placements: asPlacements(raw.placements),
   };
-  if (typeof raw.order === 'number' && Number.isFinite(raw.order)) board.order = Math.round(raw.order);
+  if (isValidOrder(raw.order)) board.order = Math.round(raw.order);
   if (raw.archived === true) board.archived = true;
   return board;
 }
