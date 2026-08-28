@@ -1,6 +1,6 @@
 # 卡片盒筆記系統 — Session Handoff
 
-> 給下一個 session 接續用。最後更新：2026-08-28（最新合併：PR #15）。
+> 給下一個 session 接續用。最後更新：2026-08-28（最新合併：PR #16；白板排序／封存待合併）。
 > web 版路徑：`/Volumes/2tb/project/card-note`；iOS 版路徑：`/Volumes/2tb/project/card-note-ios`（見下方「iOS 版」章節與該 repo 的 `docs/ARCHITECTURE.md`）。
 
 ## 一句話
@@ -28,11 +28,11 @@ cd /Volumes/2tb/project/card-note
 npm install            # 首次
 npm run dev            # 開發（不要留在背景，見下方陷阱）
 npm run build          # tsc --noEmit && vite build（型別+建置驗證）
-npm test               # vitest 單元，目前 63 passed
-npm run test:e2e       # playwright，目前 7 passed（會自動起 dev server）
+npm test               # vitest 單元，目前 89 passed
+npm run test:e2e       # playwright，目前 11 passed（會自動起 dev server）
 ```
 
-正式測試都在專案內：`tests/unit/`（序列化 round-trip、三方合併、衝突解決、gitBlobSha、tabLock、ownedPaths、inboxDraft、claudeProvider）與 `tests/e2e/`（smoke、multiTab、linkDrag）。
+正式測試都在專案內：`tests/unit/`（序列化 round-trip、三方合併、衝突解決、gitBlobSha、tabLock、ownedPaths、inboxDraft、claudeProvider、boardOrder、boardStore）與 `tests/e2e/`（smoke、multiTab、linkDrag、boardTabs）。
 
 **兩個會浪費時間的環境陷阱**：
 
@@ -53,7 +53,7 @@ npm run test:e2e       # playwright，目前 7 passed（會自動起 dev server�
 <repo>/
 ├── cardnote.json          { schemaVersion:2, app:"card-note" }
 ├── cards/<ulid>.md        frontmatter(id,type,title,tags,created,updated) + markdown body（無 x/y）
-├── boards/<id>.json       { id, name, placements:[{cardId,x,y}] }
+├── boards/<id>.json       { id, name, order?, archived?, placements:[{cardId,x,y}] }（order/archived 沒動過就不寫）
 ├── links.ndjson           已確認連結（solid），每行一條、排序；AI 建議連結不進 git
 ├── projects/<id>.json     { id, name, color, cols:{todo,doing,done:[cardId]} }
 └── diary/<YYYY-MM-DD>.md   frontmatter(date,processed,extracted) + body
@@ -84,11 +84,12 @@ components/
   layout/             AppShell TopBar LeftRail BottomTabBar DetailHost
   panels/             CardDetailContent AiSearchOverlay AiSuggestionsContent SyncStatusContent
                       SettingsDialog ImportDialog ConflictResolver NewProjectModal AddToBoardModal
+                      BoardManagerModal(白板排序／封存)
   common/             icons(lucide 包裝) ContextMenu CardTypeBadge Modal Sheet
 hooks/                useMediaQuery useKeyboard useLongPress
 ```
 
-store 重要 actions：卡片 `addCard/updateCard/deleteCard`；白板 `selectBoard/createBoard/renameBoard/deleteBoard/addCardToBoard/addCardsToBoard/removeCardFromBoard/moveCardOnBoard/createCardOnBoard/openAddToBoard/migrateDefaultBoard`；連結 `addLink/removeLink/acceptLink/dismissLink/setAiSuggestions`；看板 `moveKanbanCard/removeCardFromProject/createProject`；日記 `addDiaryEntry/applyDiaryExtraction`；同步狀態 `setRepo/setPat/setSyncStatus/setCommits/setConflicts`；生命週期 `hydrate/mergeImport/getData`。
+store 重要 actions：卡片 `addCard/updateCard/deleteCard`；白板 `selectBoard/createBoard/renameBoard/deleteBoard/addCardToBoard/addCardsToBoard/removeCardFromBoard/moveCardOnBoard/createCardOnBoard/openAddToBoard/reorderBoards/setBoardArchived/openBoardManager/migrateDefaultBoard`；連結 `addLink/removeLink/acceptLink/dismissLink/setAiSuggestions`；看板 `moveKanbanCard/removeCardFromProject/createProject`；日記 `addDiaryEntry/applyDiaryExtraction`；同步狀態 `setRepo/setPat/setSyncStatus/setCommits/setConflicts`；生命週期 `hydrate/mergeImport/getData`。
 
 同步引擎入口（`src/sync/syncEngine.ts`）：`verifyRepo` / `connectAndSync` / `syncNow` / `resolveConflictsAndSync`。設定頁 `SettingsDialog` 呼叫。
 
@@ -105,8 +106,8 @@ store 重要 actions：卡片 `addCard/updateCard/deleteCard`；白板 `selectBo
 
 ### B. 可以直接動手的下一步（不需要使用者）
 
-- **白板排序／封存**——正式資料 repo 有 **31 個白板**，tabs 早就排不下，這是目前最有感的一項。
 - **iOS 版移植白板拖曳建立連結**（web 已做，見紀錄第 11 項；純互動層，不涉序列化，不受兩端同步鐵律約束）。
+- **iOS 版白板排序／封存 UI**（資料層已就緒，見紀錄第 13 項；iOS 目前照 `order` 排序，但照常顯示已封存的白板、也沒有封存操作）。
 - 圖片／附件處理（目前只支援 Markdown 連結與外部 URL）。
 - AI 建議連結持久化選項（現在 AI 建議不進 git，重整就沒了）。
 - web/iOS 模型候選序列升級（如加入 `claude-opus-5`，**必須兩端同步改**）。
@@ -125,6 +126,7 @@ store 重要 actions：卡片 `addCard/updateCard/deleteCard`；白板 `selectBo
 10. ✅ **Claude provider 離線驗證 + 截斷 bug（2026-08-16）**：`tests/unit/claudeProvider.test.ts` 攔截 `fetch`，斷言實際送上線的請求形狀——模型名、`output_config.format`、reasoning 層帶 adaptive thinking 而 haiku 正確省略、cached system block、403/404 才換候選模型而 401 立刻失敗、建議連結的過濾規則。**抓到真 bug**：回應因 `max_tokens` 截斷時，半截 JSON 直接進 `JSON.parse`，使用者看到 `Unterminated string in JSON at position 13`；現在明確處理該 stop reason。同時把 reasoning 額度 2048 → 16000（adaptive thinking 的思考 token 與回應共用 `max_tokens`，幾百張卡時很容易先被思考吃掉再把 JSON 切一半）、分類 256 → 1024。
 11. ✅ **白板拖曳建立連結（2026-08-19）**：卡片右緣（`CARD_CY` 高度，即貝茲線離開卡片的位置）有一個連結圓點，hover 時浮現、觸控裝置常駐半透明；按住拖到另一張卡放開即建立實線連結。**pointer capture 設在畫布而非圓點**——設在圓點的話後續 move/up 會 retarget 進 `CardNode`，而它的 `onPointerUp` 會 `stopPropagation` 吃掉放開事件；設在畫布可讓整段手勢留在同一個狀態機。命中測試用 `document.elementFromPoint` + `data-card-id`（卡片高度會隨內文變動，不能用固定盒模型算）。預覽線 `pointerEvents: 'none'`，否則會擋住命中測試。`addLink` 本身已處理自連/去重，且會把 AI 建議升級成實線。連線 path 加了 `data-link`（`linkKey` 正規化）與 `data-link-type` 供測試斷言。5 個 e2e（建立/預覽/去重/不誤移卡片/AI 升級）。**iOS 版尚未移植此互動**。
 12. ✅ **文件與現況對齊（2026-08-19，PR #13）**：README 的「AI 功能」章節還停在「Claude 之後可接」、模型寫 `claude-sonnet-4-6`；已改寫成兩個 provider 的實際分工與正確的候選序列，並誠實註明尚未 live 驗證。專案結構表、`src/ai/index.ts` 註解、本檔的架構決策與模組地圖一併校正。
+13. ✅ **白板排序／封存（2026-08-28）**：31 個白板讓 tabs 早就排不下。`Board` 加了兩個持久化欄位 `order`（分頁順序）與 `archived`（移出分頁列）。**兩個欄位都只在有值時才寫進 `boards/<id>.json`**——沒排序、沒封存過的白板檔案逐位元組維持原樣，所以這個功能不會在資料 repo 產生 31 檔的無意義 diff，也不會和 iOS 端互相覆寫（`tests/unit/boardOrder.test.ts` 用一份寫死的舊格式字串釘住這條線）。`parseAll` 依 order 排序（無 order 者排後、id 當 tie-breaker），因為 FileMap 的列舉順序不保證。合併規則：order/archived 視為**外觀狀態**，單側改採該側、兩側都改採本機（`mergeAppearance`），不升級成衝突視窗；keep-both 產生的白板複本一律清掉 archived，否則救回來的那份會直接掉進封存區。UI：分頁可拖曳排序（滑鼠／筆，觸控要留給水平捲動）、tab 右鍵選單（重新命名／封存／刪除）、「管理白板」對話框（搜尋、上下移、封存、還原、刪除——手機唯一的排序入口）。web 89 unit + 11 e2e。**iOS 同步做了資料層向前相容**（見 iOS 章節第 5 項）。
 
 ## 資料生態系（2026-08-09 之後的營運狀態）
 
@@ -145,7 +147,8 @@ app 本身之外，現在有一整條「資料 repo + 雲端 routine」的營運
    - **live 多裝置測試**（PR #4）：對 card-note-sync-test 一次性 orphan branch 跑完整六階段（初次 push→adopt-remote parity→跨欄位合併→keep-both→README 不可侵犯→刪除傳播）。抓到真 bug：URLSession 預設遵守 GitHub 的 Cache-Control max-age=60 → stale head 死循環，已改 reloadIgnoringLocalCacheData。跑法：`TEST_RUNNER_LIVE_SYNC_TOKEN=$(gh auth token) TEST_RUNNER_LIVE_SYNC_REPO=gpwork4u/card-note-sync-test xcodebuild test … -only-testing:CardNoteTests/LiveSyncTests`。
 2. **功能面與 web 版大致對等**：衝突解決 UI（PR #5，keep-both 預設、不可滑掉、DEBUG `-demoConflict` 預覽）、白板貝茲連線層+雙指縮放+三視圖 context menu（PR #6，`-demoBoard` 預覽）、背景同步 BGAppRefreshTask（PR #7）、AI provider（PR #8：AIProvider protocol + LocalProvider 離線啟發式 + ClaudeProvider raw HTTP——模型 entitlement fallback 序列與 web 相同、structured outputs、cached system block、count_tokens 驗 key；UI 有設定頁 key 欄位、卡片庫 AI 搜尋、卡片詳情建議連結）。
 3. **鐵律**：兩端同步/序列化語意變更必須**同時改 web 與 iOS**，並重跑 parity fixture + live 測試。web `src/sync/conflict.ts` ↔ iOS `ThreeWayMerge.swift` 是鏡像。
-4. **iOS 待驗證**：ClaudeProvider 真實 key live 呼叫（設定頁貼 key → AI 搜尋）；真機 BGTask 喚醒；真機實際安裝使用（至今只在模擬器跑過）。
+4. ✅ **白板 order/archived 向前相容（2026-08-28）**：web 加了白板排序／封存後，iOS 端同步做了資料層改動——`Board` 加 `order`/`archived`、序列化只在有值時寫出（key 順序 `id,name,order?,archived?,placements`）、`parseAll` 依 order 排序（原本白板順序取決於 Dictionary 列舉，是隨機的）、`mergeAppearance` 鏡像 web、keep-both 複本清掉 archived。parse 時特別排掉 `CFBoolean`，否則 JSON 的 `true` 會被 Foundation 當成 NSNumber 讀成 `order = 1`。**iOS 刻意仍然顯示已封存的白板**：iOS 沒有封存管理 UI，隱藏了就沒有任何入口能回到它們。parity fixture 已含三種白板（有 order、封存、完全沒有這兩個欄位）。順帶修掉 `project.yml` 缺 `GENERATE_INFOPLIST_FILE` 導致 `xcodebuild test` 在 Xcode 16 直接 build failed 的問題（這個問題在本次改動之前就存在）。測試 45 passed（原 35）。
+5. **iOS 待驗證**：ClaudeProvider 真實 key live 呼叫（設定頁貼 key → AI 搜尋）；真機 BGTask 喚醒；真機實際安裝使用（至今只在模擬器跑過）。
 
 ## 臨時預覽模式（已於 2026-08-09 還原）
 

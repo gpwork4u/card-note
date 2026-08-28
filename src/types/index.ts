@@ -33,6 +33,13 @@ export interface Board {
   id: string;
   name: string;
   placements: Placement[];
+  /**
+   * display order among boards (lower first). Optional so pre-existing board
+   * files stay byte-identical until the user actually reorders something.
+   */
+  order?: number;
+  /** archived boards leave the tab row and live in the archive drawer */
+  archived?: boolean;
 }
 
 // ---- Link (undirected) ----
